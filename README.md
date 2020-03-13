@@ -8,4 +8,5 @@ Prototype unsupervised NER using BERT's MLM and wrapper around [Dat Quoc Nguyen'
 # License
 
 The wrapper code is covered by MIT license. 
+
 [The POS tagger/Dep parser is covered by a GPL license.] (https://github.com/datquocnguyen/jPTDP/blob/master/License.txt)
