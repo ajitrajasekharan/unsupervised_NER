@@ -1,3 +1,5 @@
+The MT license covers the unsupervised tagging code. The POS tagger is covered by its own license (GPL) See license text in that directory. 
+
 MIT License
 
 Copyright (c) 2020 Ajit Rajasekharan
