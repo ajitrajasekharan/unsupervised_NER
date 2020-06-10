@@ -20,7 +20,7 @@ Confirm installation works by
   ![The output POS file should contain ](POS.png)
   
  
- 2) **Install BERT descriptor service using https://github.com/ajitrajasekharan/bert_descriptors.git**
+ **2) Install BERT descriptor service using https://github.com/ajitrajasekharan/bert_descriptors.git**
  
  Confirm installation works by 
  
@@ -31,7 +31,9 @@ Confirm installation works by
  ![The output POS file should contain ](DES.png)
  
  
- 3) **Install BERT vector clustering service using https://github.com/ajitrajasekharan/bert_vector_clustering.git**
+
+
+**3) Install BERT vector clustering service using https://github.com/ajitrajasekharan/bert_vector_clustering.git**
  
  Confirm installation works by 
  
@@ -42,6 +44,13 @@ Confirm installation works by
    LOC LOC LOC LOC LOC LOC LOC LOC LOC LOC
   
   
+ 
+ **Usage**
+ 
+    $ python3 main_ner.py 1 
+    $ python3 main_ner.py 2 sample_test.txt
+    $ python main_NER.py 3 single_entity_test.txt
+ 
  
   
 
