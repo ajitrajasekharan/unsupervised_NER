@@ -13,6 +13,8 @@ Prototype unsupervised NER using BERT's MLM and wrapper around [Dat Quoc Nguyen'
 Confirm installation works by testing the following 
 
     $ wget -O POS "http://127.0.0.1:8073/John flew from New York to Rio De Janiro"
+    
+   The output POS file should contain
   
   ![The output POS file should contain ](POS.png)
   
