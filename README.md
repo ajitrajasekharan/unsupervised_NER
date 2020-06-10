@@ -29,6 +29,20 @@ Confirm installation works by
    The output DES file should contain
    
  ![The output POS file should contain ](DES.png)
+ 
+ 
+ 3) **Install BERT vector clustering service using https://github.com/ajitrajasekharan/bert_vector_clustering.git**
+ 
+ Confirm installation works by 
+ 
+  $ wget -O DES "http://127.0.0.1:8087/dummy/John flew from entity to Rio De Janiro"
+  
+   The output DES file should contain
+   
+   LOC LOC LOC LOC LOC LOC LOC LOC LOC LOC
+  
+  
+ 
   
 
 # License
