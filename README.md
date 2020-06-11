@@ -11,6 +11,8 @@ Prototype unsupervised NER using BERT's MLM and wrapper around [Dat Quoc Nguyen'
 
 **1) Install POS service using https://github.com/ajitrajasekharan/JPTDP_wrapper.git**
 
+*Make sure to run **both** services in the install instructions*
+
 Confirm installation works by 
 
     $ wget -O POS "http://127.0.0.1:8073/John flew from New York to Rio De Janiro"
