@@ -73,4 +73,4 @@ The unsupervised NER tool  can be used in three ways.
 
 This repository is covered by MIT license. 
 
-[The POS tagger/Dep parser  is covered by a GPL license.](https://github.com/datquocnguyen/jPTDP/blob/master/License.txt)
+[The POS tagger/Dep parser that this service depends on is covered by a GPL license.](https://github.com/datquocnguyen/jPTDP/blob/master/License.txt)
