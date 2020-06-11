@@ -62,8 +62,11 @@ The unsupervised NER tool  can be used in three ways.
 
  
     $ python3 main_ner.py 1 
+    
     $ python3 main_ner.py 2 sample_test.txt
+    
     $ python main_NER.py 3 single_entity_test.txt
+    
     
     
  
