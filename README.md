@@ -47,9 +47,9 @@ Confirm installation works by
   
  
  
- ** Additional instruction **
+ **Additional notes**
  
- - Step 1 above requires pytthon 2.7 environment wheareas steps 2 and 3 requires python 3+. Step 2 requires pytorch environment. So it is best to run these services separately in different environenments (I used screen to separate them). 
+ - Step 1 above requires python 2.7 environment wheareas steps 2 and 3 requires python 3+. Step 2 requires pytorch environment. So it is best to run these services separately in different environenments (I used screen to separate them). 
   
  
 # Usage
