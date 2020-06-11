@@ -39,7 +39,7 @@ Confirm installation works by
  
  Confirm installation works by 
  
-  $ wget -O DES "http://127.0.0.1:8087/dummy/John flew from entity to Rio De Janiro"
+  $ wget -O ENT "http://127.0.0.1:8043/Miami Chicago Florida Albuquerque Houston California London Boston Austin Mexico"
   
    The output DES file should contain
    
