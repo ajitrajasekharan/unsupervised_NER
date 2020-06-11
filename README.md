@@ -41,7 +41,7 @@ Confirm installation works by
  
   $ wget -O ENT "http://127.0.0.1:8043/Miami Chicago Florida Albuquerque Houston California London Boston Austin Mexico"
   
-   The output DES file should contain
+   The output ENT file should contain
    
    LOC LOC LOC LOC LOC LOC LOC LOC LOC LOC
   
