@@ -52,7 +52,14 @@ Confirm installation works by
  - Step 1 above requires pytthon 2.7 environment wheareas steps 2 and 3 requires python 3+. Step 2 requires pytorch environment. So it is best to run these services separately in different environenments (I used screen to separate them). 
   
  
- **Usage**
+# Usage
+
+The unsupervised NER tool  can be used in three ways. 
+
+1) to tag canned sentences (option 1), 
+2) To tag custom sentences present in a file (option 2)
+3) To tag single entities in custom sentences present in a file (option 3) where the single entity is specified in a sentence in the format name:__entity__. Concrete example: Cats and Dogs:__entity__ are pets where Dogs is the term to be tagged.
+
  
     $ python3 main_ner.py 1 
     $ python3 main_ner.py 2 sample_test.txt
