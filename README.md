@@ -45,6 +45,11 @@ Confirm installation works by
    
    LOC LOC LOC LOC LOC LOC LOC LOC LOC LOC
   
+ 
+ 
+ ** Additional instruction **
+ 
+ - Step 1 above requires pytthon 2.7 environment wheareas steps 2 and 3 requires python 3+. Step 2 requires pytorch environment. So it is best to run these services separately in different environenments (I used screen to separate them). 
   
  
  **Usage**
@@ -52,6 +57,13 @@ Confirm installation works by
     $ python3 main_ner.py 1 
     $ python3 main_ner.py 2 sample_test.txt
     $ python main_NER.py 3 single_entity_test.txt
+    
+    
+ 
+ ** License **
+ 
+ MIT License
+ 
  
  
   
