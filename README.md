@@ -67,12 +67,6 @@ The unsupervised NER tool  can be used in three ways.
     
     
  
- ** License **
- 
- MIT License
- 
- 
- 
   
 
 # License
