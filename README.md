@@ -6,7 +6,7 @@ Prototype unsupervised implementation NER using BERT's MLM and wrapper around [D
 
 ![Image from Medium post on unsupervised NER ](NER.png)
 
-*The examples below are the output of using bert large cased for unsupervised NER *
+*The examples below are the output of using bert large cased for unsupervised NER*
 
 # Installation 
 
