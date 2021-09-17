@@ -44,7 +44,7 @@ Confirm installation works by
   
    The output ENT file should contain
    
-   LOC LOC LOC LOC LOC LOC LOC LOC LOC LOC
+   LOC 12 LOC 12 LOC 12 LOC 12 LOC 12 LOC 12 LOC 12 LOC 12 LOC  12 LOC 12
   
  
  
