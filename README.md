@@ -61,7 +61,7 @@ The unsupervised NER tool  can be used in three ways.
      - $ python3 main_ner.py 1 
 2) To tag custom sentences present in a file (option 2)
     - $ python3 main_ner.py 2 sample_test.txt
-3) To tag single entities in custom sentences present in a file (option 3) where the single entity is specified in a sentence in the format "name:__entity__". Concrete example: Cats and "Dogs:__entity__" are pets where Dogs is the term to be tagged.
+3) To tag single entities in custom sentences present in a file (option 3) where the single entity is specified in a sentence in the format name:__ entity __ . Concrete example: Cats and Dogs:__ entity __ are pets where Dogs is the term to be tagged.
     - $ python main_NER.py 3 single_entity_test.txt
     
     
