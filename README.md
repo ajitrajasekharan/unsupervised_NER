@@ -20,7 +20,7 @@ Confirm installation works by
     
    The output POS file should contain
   
-  ![The output POS file should contain ](POS.png)
+  <img src="POS.png" width="600">
   
  
  **2) Install BERT descriptor service using https://github.com/ajitrajasekharan/bert_descriptors.git**
@@ -31,7 +31,7 @@ Confirm installation works by
    
    The output DES file should contain
    
- ![The output POS file should contain ](DES.png)
+ <img src="DES.png" width="600">
  
  
 
