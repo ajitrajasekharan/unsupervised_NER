@@ -3,6 +3,7 @@ import config_utils as cf
 import requests
 import sys
 import urllib.parse
+import numpy as np
 from collections import OrderedDict
 
 WORD_POS = 1
@@ -10,8 +11,9 @@ TAG_POS = 2
 MASK_TAG = "__entity__"
 DISPATCH_MASK_TAG = "entity"
 DESC_HEAD = "PIVOT_DESCRIPTORS:"
-TYPE2_AMB = "AMB2-"
-TOPK_DESCS=5
+#TYPE2_AMB = "AMB2-"
+TYPE2_AMB = ""
+DUMMY_DESCS=10
 
 RESET_POS_TAG='RESET'
 
@@ -29,10 +31,13 @@ def read_common_descs(file_name):
 
 class UnsupNER:
     def __init__(self):
+        print("NER service handler started")
         self.pos_server_url  = cf.read_config()["POS_SERVER_URL"]
         self.desc_server_url  = cf.read_config()["DESC_SERVER_URL"]
         self.entity_server_url  = cf.read_config()["ENTITY_SERVER_URL"]
         self.common_descs = read_common_descs(cf.read_config()["COMMON_DESCS_FILE"])
+        self.rfp = open("log_results.txt","w")
+        self.dfp = open("log_debug.txt","w")
         print(self.pos_server_url)
         print(self.desc_server_url)
         print(self.entity_server_url)
@@ -125,10 +130,13 @@ class UnsupNER:
             ret_sent_arr.append(norm_word)
         return ' '.join(ret_sent_arr)
 
+    def tag_sentence_service(self,text):
+        entity_arr,span_arr,terms_arr,ner_str = self.tag_se_in_sentence(text,self.rfp,self.dfp)
+        return ner_str
 
     def tag_sentence(self,sent,rfp,dfp):
         sent = self.normalize_casing(sent)
-        print("Caps normalized:", sent)
+        print("Caps normalized sentence:", sent)
         url = self.pos_server_url  + sent.replace('"','\'')
         r = self.dispatch_request(url)
         terms_arr = self.extract_POS(r.text)
@@ -139,6 +147,7 @@ class UnsupNER:
         singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr)
         self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp)
         print("--------")
+        pdb.set_trace()
 
     def tag_se_in_sentence(self,sent,rfp,dfp):
         sent = self.normalize_casing(sent)
@@ -148,10 +157,10 @@ class UnsupNER:
         masked_sent_arr,span_arr = self.filter_common_noun_spans(span_arr,masked_sent_arr,terms_arr)
         singleton_sentences,singleton_spans_arr = self.gen_single_phrase_sentences(terms_arr,masked_sent_arr,span_arr,rfp,dfp)
         singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr)
-        detected_entities_arr = self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp)
+        detected_entities_arr,ner_str = self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp)
         print(detected_entities_arr)
         print("--------")
-        return detected_entities_arr,span_arr,terms_arr
+        return detected_entities_arr,span_arr,terms_arr,ner_str
 
 
 
@@ -196,8 +205,8 @@ class UnsupNER:
         detected_entities_arr = []
         for dummy,masked_sent in enumerate(masked_sent_arr):
             print(masked_sent)
-            descs = self.get_descriptors_for_masked_position(masked_sent)
-            entities = self.get_entities_for_masked_position(descs)
+            descs = self.get_descriptors_for_masked_position(masked_sent,True)
+            entities,confidences = self.get_entities_for_masked_position(descs)
             self.fill_detected_entities(detected_entities_arr,entities,span_arr)
         return detected_entities_arr
 
@@ -215,17 +224,27 @@ class UnsupNER:
             masked_sent = ' '.join(masked_sent)
             print(masked_sent)
             dfp.write(masked_sent + "\n")
-            descs = self.get_descriptors_for_masked_position(masked_sent)
+            descs = self.get_descriptors_for_masked_position(masked_sent,False)
             dfp.write(str(descs) + "\n")
-            entities = self.get_entities_for_masked_position(descs)
+            if (len(descs) > 0):
+                entities,confidences = self.get_entities_for_masked_position(descs)
+            else:
+                entities = []
             dfp.write(str(entities) + "\n")
             self.fill_detected_entities(detected_entities_arr,entities,span_arr)
             self.resolve_entities(i,singleton_entities,detected_entities_arr)
-        self.emit_sentence_entities(sent,terms_arr,detected_entities_arr,span_arr,rfp)
+        ner_str = self.emit_sentence_entities(sent,terms_arr,detected_entities_arr,span_arr,rfp)
         dfp.flush()
-        return detected_entities_arr
+        return detected_entities_arr,ner_str
 
     def fill_detected_entities(self,detected_entities_arr,entities,pan_arr):
+        if (len(entities) > 0):
+            detected_entities_arr.append(next(iter(entities)))
+        else:
+            detected_entities_arr.append("OTHER")
+
+
+    def fill_detected_entities_old(self,detected_entities_arr,entities,pan_arr):
         entities_dict = {}
         count = 1
         for i in entities:
@@ -248,11 +267,13 @@ class UnsupNER:
     def resolve_entities(self,index,singleton_entities,detected_entities_arr):
         if (singleton_entities[index] != detected_entities_arr[index]):
             #detected_entities_arr[index] = TYPE2_AMB +  singleton_entities[index] + "/" + detected_entities_arr[index]
-            detected_entities_arr[index] = TYPE2_AMB +   detected_entities_arr[index] + "/" +  singleton_entities[index]
+            #detected_entities_arr[index] = TYPE2_AMB +   detected_entities_arr[index] + "/" +  singleton_entities[index]
+            detected_entities_arr[index] = detected_entities_arr[index] + "/" +  singleton_entities[index]
 
 
     def emit_sentence_entities(self,sent,terms_arr,detected_entities_arr,span_arr,rfp):
         print("Final result")
+        ret_str = ""
         for i,term in enumerate(terms_arr):
             print(term[WORD_POS],' ',end='')
         print()
@@ -274,23 +295,41 @@ class UnsupNER:
                     in_span = True
                     tag = "B_" + detected_entities_arr[entity_index]
             rfp.write(terms_arr[i][WORD_POS] + ' ' + tag + "\n")
+            ret_str = ret_str + terms_arr[i][WORD_POS] + ' ' + tag + "\n"
             print(tag + ' ',end='')
             i += 1
         print()
         rfp.write("\n")
+        ret_str += "\n"
         rfp.flush()
+        return ret_str
 
 
 
+    #This is just a trivial optimizartion to not have to send integers to get descriptors. 
+    def match_templates(self,masked_sent):
+        words = masked_sent.split()
+        words_count = len(words)
+        if (len(words) == 4 and words[words_count-1] == "entity" and words[words_count -2] == "a" and words[words_count -3] == "is"  and words[0].isnumeric()): #only integers skipped
+            return "two "*DUMMY_DESCS
+        else:
+            return None
+        
 
 
 
-    def get_descriptors_for_masked_position(self,masked_sent):
+    def get_descriptors_for_masked_position(self,masked_sent,usecls):
         masked_sent = masked_sent.replace(MASK_TAG,DISPATCH_MASK_TAG)
-        r = self.dispatch_request(self.desc_server_url+str(masked_sent))
-        desc_arr = self.extract_descs(r.text)
+        ret_val = self.match_templates(masked_sent)
+        if (ret_val != None):
+            return ret_val.rstrip().split()
+        desc_arr = []
+        if (len(masked_sent.split()) > 1):
+            usecls_option = "1/" if usecls else "0/"
+            r = self.dispatch_request(self.desc_server_url+usecls_option + str(masked_sent))
+            desc_arr = self.extract_descs(r.text)
         print(desc_arr)
-        return desc_arr[:TOPK_DESCS]
+        return desc_arr
 
     def dispatch_request(self,url):
         max_retries = 10
@@ -307,12 +346,43 @@ class UnsupNER:
                 print("Request:", url, " failed")
                 break
 
+    def aggregate_entities(self,entities):
+        count = len(entities)
+        assert(count %2 == 0)
+        aggregate_entities = {}
+        i = 0
+        while (i < count):
+            curr_e = entities[i].split('/')
+            curr_counts = entities[i+1].split('/')
+            assert(len(curr_e) == len(curr_counts))
+            for j in range(len(curr_e)):
+                if (curr_e[j] not in aggregate_entities):
+                    aggregate_entities[curr_e[j]] = int(curr_counts[j])
+                else:
+                    aggregate_entities[curr_e[j]] += int(curr_counts[j])
+            i += 2
+        final_sorted_d = OrderedDict(sorted(aggregate_entities.items(), key=lambda kv: kv[1], reverse=True))
+        factors = list(final_sorted_d.values())
+        factors = list(map(int, factors))
+        total = sum(factors)
+        factors = np.array(factors)
+        factors = factors/total
+        factors = np.round(factors,2)
+        ret_entities = list(final_sorted_d.keys())
+        confidences = factors.tolist()
+        print(ret_entities)
+        print(confidences)
+        return ret_entities,confidences
+
+            
+
     def get_entities_for_masked_position(self,descs):
         param = ' '.join(descs)
         r = self.dispatch_request(self.entity_server_url+str(param))
         entities = r.text.split()
         print(entities)
-        return entities
+        entities,confidences = self.aggregate_entities(entities)
+        return entities,confidences
 
 
    #This is again a bad hack for prototyping purposes - extracting fields from a raw text output as opposed to a structured output like json
@@ -398,19 +468,26 @@ def tag_single_entity_in_sentence(file_name,obj):
         for line in fp:
             if (len(line) > 1):
                 print(str(count) + "] ",line,end='')
-                entity_arr,span_arr,terms_arr = obj.tag_se_in_sentence(line,rfp,dfp)
+                entity_arr,span_arr,terms_arr,ner_str = obj.tag_se_in_sentence(line,rfp,dfp)
                 print("*******************:",terms_arr[span_arr.index(1)][WORD_POS].rstrip(":"),entity_arr[0])
                 sfp.write(terms_arr[span_arr.index(1)][WORD_POS].rstrip(":") + " " + entity_arr[0] + "\n")
                 count += 1
                 sfp.flush()
+                pdb.set_trace()
     rfp.close()
     sfp.close()
     dfp.close()
+
+                
+
+        
 
 
 def test_canned_sentences(obj):
     rfp = open("results.txt","w")
     dfp = open("debug.txt","w")
+    obj.tag_sentence("Austin called",rfp,dfp)
+    obj.tag_sentence("Her hypophysitis secondary to ipilimumab was well managed with supplemental hormones",rfp,dfp)
     obj.tag_sentence("engineer",rfp,dfp)
     obj.tag_sentence("Paul Erdős died at 83",rfp,dfp)
     obj.tag_sentence("ajit rajasekharan is an engineer",rfp,dfp)
@@ -424,7 +501,6 @@ def test_canned_sentences(obj):
     obj.tag_sentence("Lionel Ritchie was popular in the late eighties",rfp,dfp)
     obj.tag_sentence("John Doe flew from New York to Rio De Janiro via Miami",rfp,dfp)
     obj.tag_sentence("He felt New York has a chance to win this year's competition",rfp,dfp)
-    obj.tag_sentence("He flew from New York to SFO",rfp,dfp)
     obj.tag_sentence("Bandolier - Budgie ' , a free itunes app for ipad , iphone and ipod touch , released in December 2011 , tells the story of the making of Bandolier in the band 's own words - including an extensive audio interview with Burke Shelley",rfp,dfp)
     obj.tag_sentence("Fyodor Mikhailovich Dostoevsky was treated for Parkinsons",rfp,dfp)
     obj.tag_sentence("In humans mutations in Foxp2 leads to verbal dyspraxia",rfp,dfp)
@@ -443,7 +519,7 @@ def test_canned_sentences(obj):
     rfp.close()
 
 
-Usage = "Usage: main_NER.py <option> [ 1 -  tag few canned sentences used in medium article.  2 - tag sentences in input file. 3 - tag single entity in a sentence\n"
+Usage = "Usage: main_NER.py <option>\n\t\t1 -   tag few canned sentences used in medium article.\n\t\t2 <file name> - tag sentences in input file.\n\t\t3 <file name> - tag single entity in a sentence. The tagged word or phrases needs to be of the form w1:__entity_ w2:__entity_\n\t\t\tExample:Her hypophysitis:__entity__ secondary to ipilimumab was well managed with supplemental:__entity__ hormones:__entity__\n"
 
 if __name__== "__main__":
     if (len(sys.argv) < 2):

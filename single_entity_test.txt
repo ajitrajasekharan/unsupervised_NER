@@ -1,2 +1,11 @@
+He lives in Montreal:__entity__
 Cats and Dogs:__entity__ are pets
+Ajit:__entity__ Rajasekharan:__entity__ is an engineer working for Microsoft:__entity__
+Ajit:__entity__ Rajasekharan:__entity__ is an engineer working for nFerence:__entity__
+She suffered from monoclonal:__entity__ gammopathy:__entity__ of:__entity__ unknown:__entity__ significance:__entity__ 
+Her hypophysitis:__entity__ secondary to ipilimumab was well managed with supplemental hormones
+Her hypophysitis:__entity__ secondary to ipilimumab was well managed with supplemental hormones:__entity__
+Her hypophysitis:__entity__ secondary to ipilimumab was well managed with supplemental:__entity__ hormones:__entity__
+She suffered from cancer:__entity__
+She suffered from colorectal:__entity__ cancer:__entity__
 investigating the role of bats in emerging  zoonoses:__entity__  fao animal
