@@ -4,8 +4,9 @@ Prototype unsupervised implementation NER using BERT's MLM and wrapper around [D
 
 [Medium post describing this method](https://towardsdatascience.com/unsupervised-ner-using-bert-2d7af5f90b8a)
 
-![Image from Medium post on unsupervised NER ](NER.png)
+ <img src="NER.png" width="600">
 
+*The examples below are the output of using bert large cased for unsupervised NER*
 
 # Installation 
 
@@ -19,7 +20,7 @@ Confirm installation works by
     
    The output POS file should contain
   
-  ![The output POS file should contain ](POS.png)
+  <img src="POS.png" width="600">
   
  
  **2) Install BERT descriptor service using https://github.com/ajitrajasekharan/bert_descriptors.git**
@@ -30,7 +31,7 @@ Confirm installation works by
    
    The output DES file should contain
    
- ![The output POS file should contain ](DES.png)
+ <img src="DES.png" width="600">
  
  
 
@@ -43,13 +44,13 @@ Confirm installation works by
   
    The output ENT file should contain
    
-   LOC LOC LOC LOC LOC LOC LOC LOC LOC LOC
+   LOC 12 LOC 12 LOC 12 LOC 12 LOC 12 LOC 12 LOC 12 LOC 12 LOC  12 LOC 12
   
  
  
  **Additional notes**
  
- - Step 1 above requires python 2.7 environment wheareas steps 2 and 3 requires python 3+. Step 2 requires pytorch environment. So it is best to run these services separately in different environenments (I used [screen](https://linuxize.com/post/how-to-use-linux-screen/)  to separate them). 
+ - Step 1 above requires python 2.7 environment wheareas steps 2 and 3 requires python 3+. Step 2 requires pytorch environment. So it is best to run these services separately in different environnments. 
   
  
 # Usage
