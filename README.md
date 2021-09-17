@@ -4,7 +4,7 @@ Prototype unsupervised implementation NER using BERT's MLM and wrapper around [D
 
 [Medium post describing this method](https://towardsdatascience.com/unsupervised-ner-using-bert-2d7af5f90b8a)
 
-![Image from Medium post on unsupervised NER ](NER.png)
+ <img src="NER.png" width="600">
 
 *The examples below are the output of using bert large cased for unsupervised NER*
 
