@@ -35,7 +35,7 @@ class NerServer(ResponseHandler.ResponseHandler):
                 write_obj.wfile.write(out.encode())
             else:
                 write_obj.wfile.write("0".encode())
-            write_obj.wfile.write("\nNF_EOS\n".encode())
+            #write_obj.wfile.write("\nNF_EOS\n".encode())
 
 
 
