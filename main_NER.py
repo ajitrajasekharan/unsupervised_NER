@@ -5,6 +5,7 @@ import sys
 import urllib.parse
 import numpy as np
 from collections import OrderedDict
+import argparse
 
 WORD_POS = 1
 TAG_POS = 2
@@ -14,6 +15,7 @@ DESC_HEAD = "PIVOT_DESCRIPTORS:"
 #TYPE2_AMB = "AMB2-"
 TYPE2_AMB = ""
 DUMMY_DESCS=10
+DEFAULT_ENTITY_MAP = "entity_types_consolidated.txt"
 
 RESET_POS_TAG='RESET'
 
@@ -29,6 +31,26 @@ def read_common_descs(file_name):
     print("Common descs for filtering read:",len(common_descs))
     return common_descs
 
+def read_entity_map(file_name):
+    emap = {}
+    with open(file_name) as fp:
+        for line in fp:
+            line = line.rstrip('\n')
+            entities = line.split()
+            if (len(entities) == 1):
+                assert(entities[0] not in emap)
+                emap[entities[0]] = entities[0]
+            else:
+                assert(len(entities) == 2)
+                entity_arr = entities[1].split('/')
+                if (entities[0] not in emap):
+                    emap[entities[0]] = entities[0]
+                for entity in entity_arr:
+                    assert(entity not in emap)
+                    emap[entity] = entities[0]
+    print("Entity map:",len(emap))
+    return emap
+
 class UnsupNER:
     def __init__(self):
         print("NER service handler started")
@@ -36,6 +58,7 @@ class UnsupNER:
         self.desc_server_url  = cf.read_config()["DESC_SERVER_URL"]
         self.entity_server_url  = cf.read_config()["ENTITY_SERVER_URL"]
         self.common_descs = read_common_descs(cf.read_config()["COMMON_DESCS_FILE"])
+        self.entity_map = read_entity_map(cf.read_config()["EMAP_FILE"])
         self.rfp = open("log_results.txt","w")
         self.dfp = open("log_debug.txt","w")
         print(self.pos_server_url)
@@ -150,7 +173,7 @@ class UnsupNER:
         pdb.set_trace()
 
     def tag_se_in_sentence(self,sent,rfp,dfp):
-        sent = self.normalize_casing(sent)
+        #sent = self.normalize_casing(sent)
         print("Caps normalized:", sent)
         terms_arr = self.set_POS_based_on_entities(sent)
         masked_sent_arr,span_arr = self.generate_masked_sentences(terms_arr)
@@ -265,7 +288,7 @@ class UnsupNER:
 
     #Contextual entity is picked as first candidate before context independent candidate
     def resolve_entities(self,index,singleton_entities,detected_entities_arr):
-        if (singleton_entities[index] != detected_entities_arr[index]):
+        if (singleton_entities[index].split('[')[0] != detected_entities_arr[index].split('[')[0] and singleton_entities[index].split('[')[0] != "OTHER"):
             #detected_entities_arr[index] = TYPE2_AMB +  singleton_entities[index] + "/" + detected_entities_arr[index]
             #detected_entities_arr[index] = TYPE2_AMB +   detected_entities_arr[index] + "/" +  singleton_entities[index]
             detected_entities_arr[index] = detected_entities_arr[index] + "/" +  singleton_entities[index]
@@ -346,24 +369,37 @@ class UnsupNER:
                 print("Request:", url, " failed")
                 break
 
-    def aggregate_entities(self,entities):
+    def aggregate_entities(self,entities,desc_weights):
+        ''' Given a masked position, whose entity we are trying to determine,
+            First get descriptors for that postion 2*N array [desc1,score1,desc2,score2,...]
+            Then for each descriptor, get entity predictions which is an array 2*N of the form [e1,score1,e2,score2,...] where e1 could be DRUG/DISEASE and score1 is 10/8 etc.
+            In this function we aggregate each unique entity prediction (e.g. DISEASE) by summing up its weighted scores across all N predictions.
+            The result factor array is normalized to create a probability distribution
+        '''
         count = len(entities)
         assert(count %2 == 0)
         aggregate_entities = {}
         i = 0
+        subtypes = {}
         while (i < count):
-            curr_e = entities[i].split('/')
             curr_counts = entities[i+1].split('/')
+            curr_e,subtypes = self.map_entities(entities[i].split('/'),curr_counts,subtypes)
             assert(len(curr_e) == len(curr_counts))
+            curr_counts_sum = sum(map(int,curr_counts))
+            curr_counts_sum = 1 if curr_counts_sum == 0 else curr_counts_sum
             for j in range(len(curr_e)):
+                if (curr_e[j] == "OTHER"):
+                    continue
                 if (curr_e[j] not in aggregate_entities):
-                    aggregate_entities[curr_e[j]] = int(curr_counts[j])
+                    aggregate_entities[curr_e[j]] = (float(curr_counts[j])/curr_counts_sum)*float(desc_weights[i+1])
+                    #aggregate_entities[curr_e[j]] = float(desc_weights[i+1])
                 else:
-                    aggregate_entities[curr_e[j]] += int(curr_counts[j])
+                    aggregate_entities[curr_e[j]] += (float(curr_counts[j])/curr_counts_sum)*float(desc_weights[i+1])
+                    #aggregate_entities[curr_e[j]] += float(desc_weights[i+1])
             i += 2
         final_sorted_d = OrderedDict(sorted(aggregate_entities.items(), key=lambda kv: kv[1], reverse=True))
-        factors = list(final_sorted_d.values())
-        factors = list(map(int, factors))
+        factors = list(final_sorted_d.values()) #convert dict values to an array
+        factors = list(map(float, factors))
         total = sum(factors)
         factors = np.array(factors)
         factors = factors/total
@@ -371,17 +407,49 @@ class UnsupNER:
         ret_entities = list(final_sorted_d.keys())
         confidences = factors.tolist()
         print(ret_entities)
+        self.sort_subtypes(subtypes)
+        ret_entities = self.update_entities_with_subtypes(ret_entities,subtypes)
+        print(ret_entities)
         print(confidences)
         return ret_entities,confidences
 
-            
+
+    def sort_subtypes(self,subtypes):
+        for ent in subtypes:
+            final_sorted_d = OrderedDict(sorted(subtypes[ent].items(), key=lambda kv: kv[1], reverse=True))
+            subtypes[ent]  = list(final_sorted_d.keys())
+
+    def update_entities_with_subtypes(self,ret_entities,subtypes):
+        new_entities = []
+        for ent in ret_entities:
+            if (ent in subtypes):
+                new_entities.append(ent + '[' + ','.join(subtypes[ent]) + ']')
+            else:
+                new_entities.append(ent)
+        return new_entities
+        
+
+    def map_entities(self,arr,counts_arr,subtypes_dict):
+        ret_arr = []
+        index = 0
+        for i in arr:
+            ret_arr.append(self.entity_map[i])
+            if (i != self.entity_map[i]):
+                if (self.entity_map[i] not in subtypes_dict):
+                    subtypes_dict[self.entity_map[i]] = {}
+                if (i not in subtypes_dict[self.entity_map[i]]):
+                    subtypes_dict[self.entity_map[i]][i] = int(counts_arr[index])
+            index += 1
+        return ret_arr,subtypes_dict
+             
 
     def get_entities_for_masked_position(self,descs):
-        param = ' '.join(descs)
+        param = ' '.join(descs[::2]) #send only the descriptors - not the neighborhood scores
         r = self.dispatch_request(self.entity_server_url+str(param))
         entities = r.text.split()
         print(entities)
-        entities,confidences = self.aggregate_entities(entities)
+        assert(len(entities) == len(descs))
+        entities,confidences = self.aggregate_entities(entities,descs)
         return entities,confidences
 
 
@@ -518,26 +586,27 @@ def test_canned_sentences(obj):
     obj.tag_sentence("X,Y,Z are medicines",rfp,dfp)
     rfp.close()
 
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='main NER for a single model ',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-input', action="store", dest="input",default="",help='Input file required for run options batch,single')
+    parser.add_argument('-option', action="store", dest="option",default="canned",help='Valid options are canned,batch,single. canned - test few canned sentences used in medium artice. batch - tag sentences in input file. Entities to be tagged are determing used POS tagging to find noun phrases. specific - tag specific entities in input file. The tagged word or phrases needs to be of the form w1:__entity_ w2:__entity_ Example:Her hypophysitis:__entity__ secondary to ipilimumab was well managed with supplemental:__entity__ hormones:__entity__')
+    results = parser.parse_args()
 
-Usage = "Usage: main_NER.py <option>\n\t\t1 -   tag few canned sentences used in medium article.\n\t\t2 <file name> - tag sentences in input file.\n\t\t3 <file name> - tag single entity in a sentence. The tagged word or phrases needs to be of the form w1:__entity_ w2:__entity_\n\t\t\tExample:Her hypophysitis:__entity__ secondary to ipilimumab was well managed with supplemental:__entity__ hormones:__entity__\n"
-
-if __name__== "__main__":
-    if (len(sys.argv) < 2):
-        print(Usage)
+    obj = UnsupNER()
+    if (results.option == "canned"):
+        test_canned_sentences(obj)
+    elif (results.option == "batch"):
+        if (len(results.input) == 0):
+            print("Input file needs to be specified")
+        else:
+            run_test(results.input,obj)
+            print("Tags and sentences are written in results.txt and debug.txt")
+    elif (results.option == "specific"):
+        if (len(results.input) == 0):
+            print("Input file needs to be specified")
+        else:
+            tag_single_entity_in_sentence(results.input,obj)
+            print("Tags and sentences are written in results.txt and debug.txt")
     else:
-          obj = UnsupNER()
-          if (sys.argv[1] == '1'):
-              test_canned_sentences(obj)
-          elif (sys.argv[1] == '2'):
-              if (len(sys.argv) < 3):
-                 print("Input file needs to be specified")
-              else:
-                 run_test(sys.argv[2],obj)
-          elif (sys.argv[1] == '3'):
-              if (len(sys.argv) < 3):
-                 print("Input file needs to be specified")
-              else:
-                 tag_single_entity_in_sentence(sys.argv[2],obj)
-          else:
-                 print("Invalid argument:\n" + Usage)
-          print("Tags and sentences are written in results.txt and debug.txt")
+        print("Invalid argument:\n")
+        parser.print_help()

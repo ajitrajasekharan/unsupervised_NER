@@ -1,4 +1,5 @@
 {"POS_SERVER_URL": "http://127.0.0.1:8073/",
 "DESC_SERVER_URL": "http://127.0.0.1:8087/dummy/",
 "ENTITY_SERVER_URL": "http://127.0.0.1:8043/",
+"EMAP_FILE": "entity_types_consolidated.txt",
 "COMMON_DESCS_FILE": "untagged_terms.txt"}
