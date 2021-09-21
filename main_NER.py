@@ -334,7 +334,12 @@ class UnsupNER:
         words = masked_sent.split()
         words_count = len(words)
         if (len(words) == 4 and words[words_count-1] == "entity" and words[words_count -2] == "a" and words[words_count -3] == "is"  and words[0].isnumeric()): #only integers skipped
-            return "two "*DUMMY_DESCS
+            pdb.set_trace()
+            dummy_arr = []
+            for i in range(DUMMY_DESCS):
+                dummy_arr.append("two")
+                dummy_arr.append("0")
+            return dummy_arr
         else:
             return None
         
@@ -345,7 +350,7 @@ class UnsupNER:
         masked_sent = masked_sent.replace(MASK_TAG,DISPATCH_MASK_TAG)
         ret_val = self.match_templates(masked_sent)
         if (ret_val != None):
-            return ret_val.rstrip().split()
+            return ret_val
         desc_arr = []
         if (len(masked_sent.split()) > 1):
             usecls_option = "1/" if usecls else "0/"
@@ -541,7 +546,7 @@ def tag_single_entity_in_sentence(file_name,obj):
                 sfp.write(terms_arr[span_arr.index(1)][WORD_POS].rstrip(":") + " " + entity_arr[0] + "\n")
                 count += 1
                 sfp.flush()
-                pdb.set_trace()
+                #pdb.set_trace()
     rfp.close()
     sfp.close()
     dfp.close()
