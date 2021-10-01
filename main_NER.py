@@ -20,6 +20,7 @@ DEFAULT_ENTITY_MAP = "entity_types_consolidated.txt"
 RESET_POS_TAG='RESET'
 
 
+
 noun_tags = ['NFP','JJ','NN','FW','NNS','NNPS','JJS','JJR','NNP','POS','CD']
 cap_tags = ['NFP','JJ','NN','FW','NNS','NNPS','JJS','JJR','NNP','PRP']
 
@@ -154,10 +155,12 @@ class UnsupNER:
         return ' '.join(ret_sent_arr)
 
     def tag_sentence_service(self,text):
-        entity_arr,span_arr,terms_arr,ner_str = self.tag_se_in_sentence(text,self.rfp,self.dfp)
-        return ner_str
+        entity_arr,span_arr,terms_arr,ner_str,debug_str = self.tag_se_in_sentence(text,self.rfp,self.dfp)
+        ret_str = ner_str + "\nDEBUG_OUTPUT\n" + '\n'.join(debug_str)
+        return ret_str
 
     def tag_sentence(self,sent,rfp,dfp):
+        debug_str_arr = []
         sent = self.normalize_casing(sent)
         print("Caps normalized sentence:", sent)
         url = self.pos_server_url  + sent.replace('"','\'')
@@ -167,23 +170,25 @@ class UnsupNER:
         masked_sent_arr,span_arr = self.generate_masked_sentences(terms_arr)
         masked_sent_arr,span_arr = self.filter_common_noun_spans(span_arr,masked_sent_arr,terms_arr)
         singleton_sentences,singleton_spans_arr = self.gen_single_phrase_sentences(terms_arr,masked_sent_arr,span_arr,rfp,dfp)
-        singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr)
-        self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp)
+        singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr,debug_str_arr)
+        self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr)
         print("--------")
         pdb.set_trace()
 
     def tag_se_in_sentence(self,sent,rfp,dfp):
         #sent = self.normalize_casing(sent)
+        debug_str_arr = []
         print("Caps normalized:", sent)
         terms_arr = self.set_POS_based_on_entities(sent)
         masked_sent_arr,span_arr = self.generate_masked_sentences(terms_arr)
         masked_sent_arr,span_arr = self.filter_common_noun_spans(span_arr,masked_sent_arr,terms_arr)
         singleton_sentences,singleton_spans_arr = self.gen_single_phrase_sentences(terms_arr,masked_sent_arr,span_arr,rfp,dfp)
-        singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr)
-        detected_entities_arr,ner_str = self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp)
+        singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr,debug_str_arr)
+        detected_entities_arr,ner_str = self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr)
         print(detected_entities_arr)
+        debug_str_arr.append("NER_FINAL_RESULTS: " + ' '.join(detected_entities_arr))
         print("--------")
-        return detected_entities_arr,span_arr,terms_arr,ner_str
+        return detected_entities_arr,span_arr,terms_arr,ner_str,debug_str_arr
 
 
 
@@ -224,12 +229,13 @@ class UnsupNER:
         return sentences,singleton_spans_arr
 
 
-    def find_singleton_entities(self,masked_sent_arr,span_arr):
+    def find_singleton_entities(self,masked_sent_arr,span_arr,debug_str_arr):
         detected_entities_arr = []
         for dummy,masked_sent in enumerate(masked_sent_arr):
             print(masked_sent)
-            descs = self.get_descriptors_for_masked_position(masked_sent,True)
-            entities,confidences = self.get_entities_for_masked_position(descs)
+            debug_str_arr.append(masked_sent)
+            descs = self.get_descriptors_for_masked_position(masked_sent,True,debug_str_arr)
+            entities,confidences = self.get_entities_for_masked_position(descs,debug_str_arr)
             self.fill_detected_entities(detected_entities_arr,entities,span_arr)
         return detected_entities_arr
 
@@ -237,7 +243,7 @@ class UnsupNER:
 
     #We have multiple masked versions of a single sentence. Tag each one of them
     #and create a complete tagged version for a sentence
-    def find_entities(self,sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp):
+    def find_entities(self,sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr):
         #print(sent)
         print(span_arr)
         dfp.write(sent + "\n")
@@ -246,11 +252,12 @@ class UnsupNER:
         for i,masked_sent in enumerate(masked_sent_arr):
             masked_sent = ' '.join(masked_sent)
             print(masked_sent)
+            debug_str_arr.append(masked_sent)
             dfp.write(masked_sent + "\n")
-            descs = self.get_descriptors_for_masked_position(masked_sent,False)
+            descs = self.get_descriptors_for_masked_position(masked_sent,False,debug_str_arr)
             dfp.write(str(descs) + "\n")
             if (len(descs) > 0):
-                entities,confidences = self.get_entities_for_masked_position(descs)
+                entities,confidences = self.get_entities_for_masked_position(descs,debug_str_arr)
             else:
                 entities = []
             dfp.write(str(entities) + "\n")
@@ -288,10 +295,33 @@ class UnsupNER:
 
     #Contextual entity is picked as first candidate before context independent candidate
     def resolve_entities(self,index,singleton_entities,detected_entities_arr):
-        if (singleton_entities[index].split('[')[0] != detected_entities_arr[index].split('[')[0] and singleton_entities[index].split('[')[0] != "OTHER"):
-            #detected_entities_arr[index] = TYPE2_AMB +  singleton_entities[index] + "/" + detected_entities_arr[index]
-            #detected_entities_arr[index] = TYPE2_AMB +   detected_entities_arr[index] + "/" +  singleton_entities[index]
-            detected_entities_arr[index] = detected_entities_arr[index] + "/" +  singleton_entities[index]
+        if (singleton_entities[index].split('[')[0] != detected_entities_arr[index].split('[')[0]):
+            if (singleton_entities[index].split('[')[0] != "OTHER" and detected_entities_arr[index].split('[')[0] != "OTHER"):
+                detected_entities_arr[index] = detected_entities_arr[index] + "/" +  singleton_entities[index]
+            elif (detected_entities_arr[index].split('[')[0] == "OTHER"):
+                detected_entities_arr[index] =  singleton_entities[index]
+            else:
+                pass
+        else:
+           #this is the case when both CI and CS entity type match. Since the subtypes are already ordered, just merge(CS/CI,CS/CI...) the two picking unique subtypes
+            main_entity = detected_entities_arr[index].split('[')[0]
+            cs_arr = detected_entities_arr[index].split('[')[1].rstrip(']').split(',')
+            ci_arr = singleton_entities[index].split('[')[1].rstrip(']').split(',')
+            cs_arr_len  = len(cs_arr)
+            ci_arr_len  = len(ci_arr)
+            max_len = ci_arr_len if ci_arr_len > cs_arr_len else cs_arr_len
+            merged_unique_subtype_dict = OrderedDict()
+            for i in range(cs_arr_len):
+                if (i < cs_arr_len and cs_arr[i] not in merged_unique_subtype_dict):
+                    merged_unique_subtype_dict[cs_arr[i]] = 1
+                if (i < ci_arr_len and ci_arr[i] not in merged_unique_subtype_dict):
+                    merged_unique_subtype_dict[ci_arr[i]] = 1
+            new_subtypes_str = ','.join(list(merged_unique_subtype_dict.keys()))
+            detected_entities_arr[index] =  main_entity + '[' + new_subtypes_str + ']'
+
+
+
+
 
 
     def emit_sentence_entities(self,sent,terms_arr,detected_entities_arr,span_arr,rfp):
@@ -329,12 +359,11 @@ class UnsupNER:
 
 
 
-    #This is just a trivial optimizartion to not have to send integers to get descriptors. 
+    #This is just a trivial optimizartion to not have to send integers to get descriptors.
     def match_templates(self,masked_sent):
         words = masked_sent.split()
         words_count = len(words)
         if (len(words) == 4 and words[words_count-1] == "entity" and words[words_count -2] == "a" and words[words_count -3] == "is"  and words[0].isnumeric()): #only integers skipped
-            pdb.set_trace()
             dummy_arr = []
             for i in range(DUMMY_DESCS):
                 dummy_arr.append("two")
@@ -342,11 +371,11 @@ class UnsupNER:
             return dummy_arr
         else:
             return None
-        
 
 
 
-    def get_descriptors_for_masked_position(self,masked_sent,usecls):
+
+    def get_descriptors_for_masked_position(self,masked_sent,usecls,debug_str_arr):
         masked_sent = masked_sent.replace(MASK_TAG,DISPATCH_MASK_TAG)
         ret_val = self.match_templates(masked_sent)
         if (ret_val != None):
@@ -357,6 +386,7 @@ class UnsupNER:
             r = self.dispatch_request(self.desc_server_url+usecls_option + str(masked_sent))
             desc_arr = self.extract_descs(r.text)
         print(desc_arr)
+        #debug_str_arr.append(' '.join(desc_arr))
         return desc_arr
 
     def dispatch_request(self,url):
@@ -374,7 +404,7 @@ class UnsupNER:
                 print("Request:", url, " failed")
                 break
 
-    def aggregate_entities(self,entities,desc_weights):
+    def aggregate_entities(self,entities,desc_weights,debug_str_arr):
         ''' Given a masked position, whose entity we are trying to determine,
             First get descriptors for that postion 2*N array [desc1,score1,desc2,score2,...]
             Then for each descriptor, get entity predictions which is an array 2*N of the form [e1,score1,e2,score2,...] where e1 could be DRUG/DISEASE and score1 is 10/8 etc.
@@ -388,7 +418,7 @@ class UnsupNER:
         subtypes = {}
         while (i < count):
             curr_counts = entities[i+1].split('/')
-            curr_e,subtypes = self.map_entities(entities[i].split('/'),curr_counts,subtypes)
+            curr_e = self.map_entities(entities[i].split('/'),curr_counts,subtypes)
             assert(len(curr_e) == len(curr_counts))
             curr_counts_sum = sum(map(int,curr_counts))
             curr_counts_sum = 1 if curr_counts_sum == 0 else curr_counts_sum
@@ -406,6 +436,9 @@ class UnsupNER:
         factors = list(final_sorted_d.values()) #convert dict values to an array
         factors = list(map(float, factors))
         total = sum(factors)
+        if (total == 0):
+            total = 1
+            factors[0] = 1 #just make the sum 100%. This a boundary case for numbers for instance
         factors = np.array(factors)
         factors = factors/total
         factors = np.round(factors,2)
@@ -415,7 +448,11 @@ class UnsupNER:
         self.sort_subtypes(subtypes)
         ret_entities = self.update_entities_with_subtypes(ret_entities,subtypes)
         print(ret_entities)
+        debug_str_arr.append(" ")
+        debug_str_arr.append(' '.join(ret_entities))
         print(confidences)
+        debug_str_arr.append(' '.join([str(x) for x in confidences]))
+        debug_str_arr.append("\n\n")
         return ret_entities,confidences
 
 
@@ -426,35 +463,49 @@ class UnsupNER:
 
     def update_entities_with_subtypes(self,ret_entities,subtypes):
         new_entities = []
+
         for ent in ret_entities:
+            #if (len(ret_entities) == 1):
+            #    new_entities.append(ent) #avoid creating a subtype for a single case
+            #    return new_entities
             if (ent in subtypes):
                 new_entities.append(ent + '[' + ','.join(subtypes[ent]) + ']')
             else:
                 new_entities.append(ent)
         return new_entities
-        
+
 
     def map_entities(self,arr,counts_arr,subtypes_dict):
         ret_arr = []
         index = 0
         for i in arr:
             ret_arr.append(self.entity_map[i])
-            if (i != self.entity_map[i]):
+            #if (i != self.entity_map[i]):
+            if (True):
                 if (self.entity_map[i] not in subtypes_dict):
                     subtypes_dict[self.entity_map[i]] = {}
                 if (i not in subtypes_dict[self.entity_map[i]]):
-                    subtypes_dict[self.entity_map[i]][i] = int(counts_arr[index])
+                    #subtypes_dict[self.entity_map[i]][i] = int(counts_arr[index])
+                    subtypes_dict[self.entity_map[i]][i] = 1 #just count the number of occurrence of subtypes as opposed to their counts in clusters
+                else:
+                    #subtypes_dict[self.entity_map[i]][i] += int(counts_arr[index])
+                    subtypes_dict[self.entity_map[i]][i] += 1
             index += 1
-        return ret_arr,subtypes_dict
-             
+        return ret_arr
 
-    def get_entities_for_masked_position(self,descs):
+
+    def get_entities_for_masked_position(self,descs,debug_str_arr):
         param = ' '.join(descs[::2]) #send only the descriptors - not the neighborhood scores
         r = self.dispatch_request(self.entity_server_url+str(param))
         entities = r.text.split()
         print(entities)
+        debug_combined_arr =[]
+        for d,e in zip(descs,entities):
+            debug_combined_arr.append(d + " " + e)
+        debug_str_arr.append(', '.join(debug_combined_arr))
+        #debug_str_arr.append(' '.join(entities))
         assert(len(entities) == len(descs))
-        entities,confidences = self.aggregate_entities(entities,descs)
+        entities,confidences = self.aggregate_entities(entities,descs,debug_str_arr)
         return entities,confidences
 
 
@@ -541,19 +592,19 @@ def tag_single_entity_in_sentence(file_name,obj):
         for line in fp:
             if (len(line) > 1):
                 print(str(count) + "] ",line,end='')
-                entity_arr,span_arr,terms_arr,ner_str = obj.tag_se_in_sentence(line,rfp,dfp)
+                entity_arr,span_arr,terms_arr,ner_str,debug_str = obj.tag_se_in_sentence(line,rfp,dfp)
                 print("*******************:",terms_arr[span_arr.index(1)][WORD_POS].rstrip(":"),entity_arr[0])
                 sfp.write(terms_arr[span_arr.index(1)][WORD_POS].rstrip(":") + " " + entity_arr[0] + "\n")
                 count += 1
                 sfp.flush()
-                #pdb.set_trace()
+                pdb.set_trace()
     rfp.close()
     sfp.close()
     dfp.close()
 
-                
 
-        
+
+
 
 
 def test_canned_sentences(obj):

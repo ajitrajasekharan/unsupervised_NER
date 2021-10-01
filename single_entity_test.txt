@@ -1,3 +1,7 @@
+Colon cleansing efficacy and safety with 1L NER1006 versus 2L polyethylene glycol + ascorbate:__entity__ : a randomized Phase 3 trial
+Mesothelioma:__entity__ is caused by exposure to asbestos:__entity__
+Paul:__entity__ Erdős:__entity__ died at 83:__entity__
+Imatinib:__entity__ mesylate:__entity__ is a drug and is used to treat nsclc:__entity__
 Overexpression of EGFR:__entity__ in the pancreas:__entity__ can lead to panceratic:__entity__ cancer:__entity__
 High eGFR:__entity__ levels:__entity__ in glomerulus is a sign of malfunctioning:__entity__ kidney:__entity__
 High EGFR:__entity__ levels:__entity__ in glomerulus:__entity__ is a sign of malfunctioning:__entity__ kidney:__entity__
@@ -7,7 +11,6 @@ Overexpression of EGFR:__entity__ in pancreas:__entity__ can lead to panceratic:
 The myocardial:__entity__ infarction:__entity__ is routinely diagnosed by ECG:__entity__
 Expression of EGFR:__entity__ is modulated by HER2:__entity__
 Overexpression of HER2:__entity__ in pancreas:__entity__ can lead to panceratic:__entity__ cancer:__entity__
-Imatinib:__entity__ mesylate:__entity__ is a drug and is used to treat nsclc:__entity__
 Her hypophysitis:__entity__ secondary to ipilimumab:__entity__ was well managed with supplemental:__entity__ hormones:__entity__
 Dr:__entity__ Praveen:__entity__ Kumar:__entity__ advocates wearing masks in public places to reduce the risk of covid:__entity__
 Dr Praveen Kumar advocates wearing masks in public places to reduce the risk of covid:__entity__
