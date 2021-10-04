@@ -6,10 +6,11 @@ import urllib.parse
 import numpy as np
 from collections import OrderedDict
 import argparse
+from ensemble.utils.common import *
 
-WORD_POS = 1
-TAG_POS = 2
-MASK_TAG = "__entity__"
+#WORD_POS = 1
+#TAG_POS = 2
+#MASK_TAG = "__entity__"
 DISPATCH_MASK_TAG = "entity"
 DESC_HEAD = "PIVOT_DESCRIPTORS:"
 #TYPE2_AMB = "AMB2-"
@@ -17,12 +18,12 @@ TYPE2_AMB = ""
 DUMMY_DESCS=10
 DEFAULT_ENTITY_MAP = "entity_types_consolidated.txt"
 
-RESET_POS_TAG='RESET'
+#RESET_POS_TAG='RESET'
 
 
 
-noun_tags = ['NFP','JJ','NN','FW','NNS','NNPS','JJS','JJR','NNP','POS','CD']
-cap_tags = ['NFP','JJ','NN','FW','NNS','NNPS','JJS','JJR','NNP','PRP']
+#noun_tags = ['NFP','JJ','NN','FW','NNS','NNPS','JJS','JJR','NNP','POS','CD']
+#cap_tags = ['NFP','JJ','NN','FW','NNS','NNPS','JJS','JJR','NNP','PRP']
 
 def read_common_descs(file_name):
     common_descs = {}
@@ -86,63 +87,6 @@ class UnsupNER:
                     terms_arr.append(terms)
             return terms_arr
 
-    def capitalize(self,terms_arr):
-        for i,term_tag in enumerate(terms_arr):
-            #print(term_tag)
-            if (term_tag[TAG_POS] in cap_tags):
-                word = term_tag[WORD_POS][0].upper() + term_tag[WORD_POS][1:]
-                term_tag[WORD_POS] = word
-        #print(terms_arr)
-
-    def set_POS_based_on_entities(self,sent):
-        terms_arr = []
-        sent_arr = sent.split()
-        for i,word in enumerate(sent_arr):
-            #print(term_tag)
-            term_tag = ['-']*5
-            if (word.endswith(MASK_TAG)):
-                term_tag[TAG_POS] = noun_tags[0]
-                term_tag[WORD_POS] = word.replace(MASK_TAG,"").rstrip(":")
-            else:
-                term_tag[TAG_POS] = RESET_POS_TAG
-                term_tag[WORD_POS] = word
-            terms_arr.append(term_tag)
-        return terms_arr
-        #print(terms_arr)
-
-    def filter_common_noun_spans(self,span_arr,masked_sent_arr,terms_arr):
-        ret_span_arr = span_arr.copy()
-        ret_masked_sent_arr = []
-        sent_index = 0
-        loop_span_index = 0
-        while (loop_span_index < len(span_arr)):
-            span_val = span_arr[loop_span_index]
-            orig_index = loop_span_index
-            if (span_val == 1):
-                curr_index = orig_index
-                is_all_common = True
-                while (curr_index < len(span_arr) and span_arr[curr_index] == 1):
-                    term = terms_arr[curr_index]
-                    if (term[WORD_POS].lower() not in self.common_descs):
-                        is_all_common = False
-                    curr_index += 1
-                loop_span_index = curr_index #note the loop scan index is updated
-                if (is_all_common):
-                    curr_index = orig_index
-                    print("Filtering common span: ",end='')
-                    while (curr_index < len(span_arr) and span_arr[curr_index] == 1):
-                        print(terms_arr[curr_index][WORD_POS],' ',end='')
-                        ret_span_arr[curr_index] = 0
-                        curr_index += 1
-                    print()
-                    sent_index += 1 # we are skipping a span
-                else:
-                    ret_masked_sent_arr.append(masked_sent_arr[sent_index])
-                    sent_index += 1
-            else:
-                loop_span_index += 1
-        return ret_masked_sent_arr,ret_span_arr
-
     def normalize_casing(self,sent):
         sent_arr = sent.split()
         ret_sent_arr = []
@@ -167,8 +111,8 @@ class UnsupNER:
         r = self.dispatch_request(url)
         terms_arr = self.extract_POS(r.text)
         self.capitalize(terms_arr)
-        masked_sent_arr,span_arr = self.generate_masked_sentences(terms_arr)
-        masked_sent_arr,span_arr = self.filter_common_noun_spans(span_arr,masked_sent_arr,terms_arr)
+        masked_sent_arr,span_arr = generate_masked_sentences(terms_arr)
+        masked_sent_arr,span_arr = filter_common_noun_spans(span_arr,masked_sent_arr,terms_arr,self.common_descs)
         singleton_sentences,singleton_spans_arr = self.gen_single_phrase_sentences(terms_arr,masked_sent_arr,span_arr,rfp,dfp)
         singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr,debug_str_arr)
         self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr)
@@ -179,9 +123,9 @@ class UnsupNER:
         #sent = self.normalize_casing(sent)
         debug_str_arr = []
         print("Caps normalized:", sent)
-        terms_arr = self.set_POS_based_on_entities(sent)
-        masked_sent_arr,span_arr = self.generate_masked_sentences(terms_arr)
-        masked_sent_arr,span_arr = self.filter_common_noun_spans(span_arr,masked_sent_arr,terms_arr)
+        terms_arr = set_POS_based_on_entities(sent)
+        masked_sent_arr,span_arr = generate_masked_sentences(terms_arr)
+        masked_sent_arr,span_arr = filter_common_noun_spans(span_arr,masked_sent_arr,terms_arr,self.common_descs)
         singleton_sentences,singleton_spans_arr = self.gen_single_phrase_sentences(terms_arr,masked_sent_arr,span_arr,rfp,dfp)
         singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr,debug_str_arr)
         detected_entities_arr,ner_str = self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr)
