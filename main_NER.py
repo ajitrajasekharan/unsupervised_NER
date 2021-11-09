@@ -7,6 +7,7 @@ import numpy as np
 from collections import OrderedDict
 import argparse
 from ensemble.utils.common import *
+import json
 
 #WORD_POS = 1
 #TAG_POS = 2
@@ -98,37 +99,72 @@ class UnsupNER:
             ret_sent_arr.append(norm_word)
         return ' '.join(ret_sent_arr)
 
-    def tag_sentence_service(self,text):
-        entity_arr,span_arr,terms_arr,ner_str,debug_str = self.tag_se_in_sentence(text,self.rfp,self.dfp)
-        ret_str = ner_str + "\nDEBUG_OUTPUT\n" + '\n'.join(debug_str)
+    def tag_sentence_service(self,text,full_sentence_tag):
+        if (full_sentence_tag):
+            ret_str = self.tag_sentence(text,self.rfp,self.dfp)
+        else:
+            entity_arr,span_arr,terms_arr,ner_str,debug_str = self.tag_se_in_sentence(text,self.rfp,self.dfp)
+            ret_str = ner_str + "\nDEBUG_OUTPUT\n" + '\n'.join(debug_str)
         return ret_str
+
+    def dictify_ner_response(self,ner_str):
+        arr = ner_str.split('\n')
+        ret_dict = OrderedDict()
+        count = 1
+        ref_indices_arr = []
+        for line in arr:
+            terms = line.split()
+            if (len(terms) == 2):
+                ret_dict[count] = {"term":terms[0],"e":terms[1]}
+                if (terms[1] != "O" and terms[1].startswith("B_")):
+                        ref_indices_arr.append(count)
+                count += 1
+        return ret_dict,ref_indices_arr
+
+
 
     def tag_sentence(self,sent,rfp,dfp):
         debug_str_arr = []
+        entity_info_arr = []
         sent = self.normalize_casing(sent)
         print("Caps normalized sentence:", sent)
         url = self.pos_server_url  + sent.replace('"','\'')
         r = self.dispatch_request(url)
         terms_arr = self.extract_POS(r.text)
-        self.capitalize(terms_arr)
         masked_sent_arr,span_arr = generate_masked_sentences(terms_arr)
         masked_sent_arr,span_arr = filter_common_noun_spans(span_arr,masked_sent_arr,terms_arr,self.common_descs)
         singleton_sentences,singleton_spans_arr = self.gen_single_phrase_sentences(terms_arr,masked_sent_arr,span_arr,rfp,dfp)
-        singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr,debug_str_arr)
-        self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr)
+        singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr,debug_str_arr,[]) #Ignore entity type for singleton prediction for prob distribution purposes
+        detected_entities_arr,ner_str = self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr,entity_info_arr)
         print("--------")
-        pdb.set_trace()
+        if (len(detected_entities_arr) != len(entity_info_arr)):
+            if (len(entity_info_arr) == 0):
+                entity_info_arr.append([{"e":"O","confidence":1}])
+        ret_dict,ref_indices_arr  = self.dictify_ner_response(ner_str)
+        assert(len(ref_indices_arr)  == len(detected_entities_arr))
+        aux_dict = OrderedDict()
+        count = 0
+        for e,c in zip(detected_entities_arr,entity_info_arr):
+            aux_dict[ref_indices_arr[count]] = {"e":e,"cs_distribution":c}
+            count += 1
+        #print(ret_dict)
+        #print(aux_dict)
+        final_ret_dict = {"total_terms_count":len(ret_dict),"detected_entity_phrases_count":len(detected_entities_arr),"ner":ret_dict,"cs_prediction_details":aux_dict}
+        json_str = json.dumps(final_ret_dict,indent = 4)
+        print (json_str)
+        return json_str
 
     def tag_se_in_sentence(self,sent,rfp,dfp):
         #sent = self.normalize_casing(sent)
         debug_str_arr = []
+        entity_info_arr = []
         print("Caps normalized:", sent)
         terms_arr = set_POS_based_on_entities(sent)
         masked_sent_arr,span_arr = generate_masked_sentences(terms_arr)
         masked_sent_arr,span_arr = filter_common_noun_spans(span_arr,masked_sent_arr,terms_arr,self.common_descs)
         singleton_sentences,singleton_spans_arr = self.gen_single_phrase_sentences(terms_arr,masked_sent_arr,span_arr,rfp,dfp)
-        singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr,debug_str_arr)
-        detected_entities_arr,ner_str = self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr)
+        singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr,debug_str_arr,entity_info_arr)
+        detected_entities_arr,ner_str = self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr,entity_info_arr)
         print(detected_entities_arr)
         debug_str_arr.append("NER_FINAL_RESULTS: " + ' '.join(detected_entities_arr))
         print("--------")
@@ -173,13 +209,13 @@ class UnsupNER:
         return sentences,singleton_spans_arr
 
 
-    def find_singleton_entities(self,masked_sent_arr,span_arr,debug_str_arr):
+    def find_singleton_entities(self,masked_sent_arr,span_arr,debug_str_arr,entity_info_arr):
         detected_entities_arr = []
         for dummy,masked_sent in enumerate(masked_sent_arr):
             print(masked_sent)
             debug_str_arr.append(masked_sent)
             descs = self.get_descriptors_for_masked_position(masked_sent,True,debug_str_arr)
-            entities,confidences = self.get_entities_for_masked_position(descs,debug_str_arr)
+            entities,confidences = self.get_entities_for_masked_position(descs,debug_str_arr,entity_info_arr)
             self.fill_detected_entities(detected_entities_arr,entities,span_arr)
         return detected_entities_arr
 
@@ -187,7 +223,7 @@ class UnsupNER:
 
     #We have multiple masked versions of a single sentence. Tag each one of them
     #and create a complete tagged version for a sentence
-    def find_entities(self,sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr):
+    def find_entities(self,sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr,entity_info_arr):
         #print(sent)
         print(span_arr)
         dfp.write(sent + "\n")
@@ -201,7 +237,7 @@ class UnsupNER:
             descs = self.get_descriptors_for_masked_position(masked_sent,False,debug_str_arr)
             dfp.write(str(descs) + "\n")
             if (len(descs) > 0):
-                entities,confidences = self.get_entities_for_masked_position(descs,debug_str_arr)
+                entities,confidences = self.get_entities_for_masked_position(descs,debug_str_arr,entity_info_arr)
             else:
                 entities = []
             dfp.write(str(entities) + "\n")
@@ -348,7 +384,7 @@ class UnsupNER:
                 print("Request:", url, " failed")
                 break
 
-    def aggregate_entities(self,entities,desc_weights,debug_str_arr):
+    def aggregate_entities(self,entities,desc_weights,debug_str_arr,entity_info_arr):
         ''' Given a masked position, whose entity we are trying to determine,
             First get descriptors for that postion 2*N array [desc1,score1,desc2,score2,...]
             Then for each descriptor, get entity predictions which is an array 2*N of the form [e1,score1,e2,score2,...] where e1 could be DRUG/DISEASE and score1 is 10/8 etc.
@@ -395,6 +431,11 @@ class UnsupNER:
         debug_str_arr.append(" ")
         debug_str_arr.append(' '.join(ret_entities))
         print(confidences)
+        assert(len(confidences) == len(ret_entities))
+        arr = []
+        for e,c in zip(ret_entities,confidences):
+            arr.append({"e":e,"confidence":c})
+        entity_info_arr.append(arr)
         debug_str_arr.append(' '.join([str(x) for x in confidences]))
         debug_str_arr.append("\n\n")
         return ret_entities,confidences
@@ -438,7 +479,7 @@ class UnsupNER:
         return ret_arr
 
 
-    def get_entities_for_masked_position(self,descs,debug_str_arr):
+    def get_entities_for_masked_position(self,descs,debug_str_arr,entity_info_arr):
         param = ' '.join(descs[::2]) #send only the descriptors - not the neighborhood scores
         r = self.dispatch_request(self.entity_server_url+str(param))
         entities = r.text.split()
@@ -449,7 +490,7 @@ class UnsupNER:
         debug_str_arr.append(', '.join(debug_combined_arr))
         #debug_str_arr.append(' '.join(entities))
         assert(len(entities) == len(descs))
-        entities,confidences = self.aggregate_entities(entities,descs,debug_str_arr)
+        entities,confidences = self.aggregate_entities(entities,descs,debug_str_arr,entity_info_arr)
         return entities,confidences
 
 
@@ -554,11 +595,11 @@ def tag_single_entity_in_sentence(file_name,obj):
 def test_canned_sentences(obj):
     rfp = open("results.txt","w")
     dfp = open("debug.txt","w")
+    obj.tag_sentence("engineer",rfp,dfp)
     obj.tag_sentence("Austin called",rfp,dfp)
     obj.tag_sentence("Her hypophysitis secondary to ipilimumab was well managed with supplemental hormones",rfp,dfp)
-    obj.tag_sentence("engineer",rfp,dfp)
-    obj.tag_sentence("Paul Erdős died at 83",rfp,dfp)
     obj.tag_sentence("ajit rajasekharan is an engineer",rfp,dfp)
+    obj.tag_sentence("Paul Erdős died at 83",rfp,dfp)
     obj.tag_sentence("Imatinib mesylate is a drug and is used to treat nsclc",rfp,dfp)
     obj.tag_sentence("In Seattle , Pete Incaviglia 's grand slam with one out in the sixth snapped a tie and lifted the Baltimore Orioles past the Seattle           Mariners , 5-2 .",rfp,dfp)
     obj.tag_sentence("It was Incaviglia 's sixth grand slam and 200th homer of his career .",rfp,dfp)

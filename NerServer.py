@@ -5,9 +5,11 @@ import subprocess
 import urllib
 import main_NER
 import pdb
+import config_utils as cf
 
 
 singleton = None
+full_sentence_tag = True
 try:
     from subprocess import DEVNULL  # Python 3.
 except ImportError:
@@ -19,15 +21,17 @@ class NerServer(ResponseHandler.ResponseHandler):
     def handler(self,write_obj = None):
         print("In derived class")
         global singleton
+        global full_sentence_tag
         if singleton is None:
             singleton = main_NER.UnsupNER()
+            full_sentence_tag  = True if cf.read_config()["FULL_SENTENCE_TAG"] == "1" else False
         if (write_obj is not None):
             param =write_obj.path[1:]
             print("Orig Arg = ",param)
             param = '/'.join(param.split('/')[1:])
             print("API param removed Arg = ",param)
             param = urllib.parse.unquote(param)
-            out = singleton.tag_sentence_service(param)
+            out = singleton.tag_sentence_service(param,full_sentence_tag)
             #print("Arg = ",write_obj.path[1:])
             #out = singleton.punct_sentence(urllib.parse.unquote(write_obj.path[1:].lower()))
             print(out)
