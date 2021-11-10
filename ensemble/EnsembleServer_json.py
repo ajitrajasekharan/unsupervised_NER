@@ -4,7 +4,7 @@ import ResponseHandler
 import subprocess
 import urllib
 import ensemble
-import aggregate_server
+import aggregate_server_json
 import pdb
 
 LOG_FILE = "query_response_log.txt"
@@ -30,7 +30,7 @@ class NerServer(ResponseHandler.ResponseHandler):
             print("API param removed Arg = ",param)
             param = urllib.parse.unquote(param)
             #out = singleton.tag_sentence_service(param)
-            out = aggregate_server.fetch_all(param)
+            out = aggregate_server_json.fetch_all(param)
             out = "\n\n\nEnsemble results for input: " + param +  "\n" +  '\n'.join(out)
             out += "\n\n\n"
             #print("Arg = ",write_obj.path[1:])
