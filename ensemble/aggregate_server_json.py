@@ -154,8 +154,8 @@ def get_ensembled_entities(results,servers_arr):
                     break
             if (found):
                 break
-        if (len(match_dict) != 1):
-            pdb.set_trace()
+        #if (len(match_dict) != 1):
+        #    pdb.set_trace()
         assert(len(match_dict) == 1)
         first_key = next(iter(match_dict))
         assert(first_key not in ensembled)
@@ -257,8 +257,7 @@ def run_test(inp_file):
 
 
 canned_sentences = [
-    "After studies at Hofstra University , He worked for New York Telephone before He was elected to the New York State Assembly to represent the 16th District in Northwest Nassau County ",
-    "Bandolier - Budgie ' , a free itunes app for ipad , iphone and ipod touch , released in December 2011 , tells the story of the making of Bandolier in the band 's own words - including an extensive audio interview with Burke Shelley",
+    "Ajit Rajasekharan is an engineer",
     "Imatinib mesylate is a drug and is used to treat nsclc",
     "engineer",
     "Austin called",
@@ -280,6 +279,8 @@ canned_sentences = [
     "Hotel California topped the singles chart",
     "Elon Musk said Telsa will open a manufacturing plant in Europe",
     "He flew from New York to SFO",
+    "After studies at Hofstra University , He worked for New York Telephone before He was elected to the New York State Assembly to represent the 16th District in Northwest Nassau County ",
+    "Bandolier - Budgie ' , a free itunes app for ipad , iphone and ipod touch , released in December 2011 , tells the story of the making of Bandolier in the band 's own words - including an extensive audio interview with Burke Shelley",
     "Everyday he rode his bicycle from Rajakilpakkam to Tambaram",
     "If he loses Saturday , it could devalue his position as one of the world 's great boxers , \" Panamanian Boxing Association President Ramon     Manzanares said .",
     "West Indian all-rounder Phil Simmons took four for 38 on Friday as Leicestershire beat Somerset by an innings and 39 runs in two days to take over at the head of the county championship .",
@@ -294,7 +295,7 @@ def test_canned_sentences():
         results = fetch_all(line)
         print("Input:",line)
         print(json.dumps(results,indent=4))
-        #pdb.set_trace()
+        pdb.set_trace()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='main NER for a single model ',formatter_class=argparse.ArgumentDefaultsHelpFormatter)

@@ -30,7 +30,7 @@ class MyHandler(BaseHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        obj = instance.get_instance()
+        obj = instance_json.get_instance()
         obj.handler(self)
         #response =  bytes(content, 'UTF-8')
         #self.wfile.write(response)

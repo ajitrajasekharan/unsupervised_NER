@@ -6,6 +6,7 @@ import urllib
 import ensemble
 import aggregate_server_json
 import pdb
+import json
 
 LOG_FILE = "query_response_log.txt"
 
@@ -27,14 +28,11 @@ class NerServer(ResponseHandler.ResponseHandler):
             param =write_obj.path[1:]
             print("Orig Arg = ",param)
             param = '/'.join(param.split('/')[1:])
-            print("API param removed Arg = ",param)
+            print("Json API param removed Arg = ",param)
             param = urllib.parse.unquote(param)
             #out = singleton.tag_sentence_service(param)
             out = aggregate_server_json.fetch_all(param)
-            out = "\n\n\nEnsemble results for input: " + param +  "\n" +  '\n'.join(out)
-            out += "\n\n\n"
-            #print("Arg = ",write_obj.path[1:])
-            #out = singleton.punct_sentence(urllib.parse.unquote(write_obj.path[1:].lower()))
+            out = json.dumps(out,indent=5)
             print(out)
             print("Task complete. Writing out:",len(out))
             if (len(out) >= 1):
@@ -42,7 +40,6 @@ class NerServer(ResponseHandler.ResponseHandler):
             else:
                 write_obj.wfile.write("0".encode())
             singleton.write(out)
-            singleton.write("\nQUERYEND++\n")
             singleton.flush()
             print("Write complete. Returning from handler")
             #write_obj.wfile.write("\nNF_EOS\n".encode())
