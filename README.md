@@ -71,7 +71,7 @@ The unsupervised NER tool  can be used in three ways.
  17 Sept 2021
  
  - This can now be run as a service. run_servers.sh
- - Ensembling service to be added for combining results of multiple NER servers
+ - Simple Ensembling service added for combining results of multiple NER servers
   
 
 # License

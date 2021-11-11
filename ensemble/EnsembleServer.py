@@ -4,8 +4,10 @@ import ResponseHandler
 import subprocess
 import urllib
 import ensemble
+import aggregate_server
 import pdb
 
+LOG_FILE = "query_response_log.txt"
 
 singleton = None
 try:
@@ -20,21 +22,29 @@ class NerServer(ResponseHandler.ResponseHandler):
         print("In derived class")
         global singleton
         if singleton is None:
-            singleton = ensemble.EnsembleNER()
+            singleton = open(LOG_FILE,"a")
         if (write_obj is not None):
             param =write_obj.path[1:]
             print("Orig Arg = ",param)
             param = '/'.join(param.split('/')[1:])
             print("API param removed Arg = ",param)
             param = urllib.parse.unquote(param)
-            out = singleton.tag_sentence_service(param)
+            #out = singleton.tag_sentence_service(param)
+            out = aggregate_server.fetch_all(param)
+            out = "\n\n\nEnsemble results for input: " + param +  "\n" +  '\n'.join(out)
+            out += "\n\n\n"
             #print("Arg = ",write_obj.path[1:])
             #out = singleton.punct_sentence(urllib.parse.unquote(write_obj.path[1:].lower()))
             print(out)
+            print("Task complete. Writing out:",len(out))
             if (len(out) >= 1):
                 write_obj.wfile.write(out.encode())
             else:
                 write_obj.wfile.write("0".encode())
+            singleton.write(out)
+            singleton.write("\nQUERYEND++\n")
+            singleton.flush()
+            print("Write complete. Returning from handler")
             #write_obj.wfile.write("\nNF_EOS\n".encode())
 
 
