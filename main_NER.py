@@ -20,6 +20,7 @@ DUMMY_DESCS=10
 DEFAULT_ENTITY_MAP = "entity_types_consolidated.txt"
 
 #RESET_POS_TAG='RESET'
+SPECIFIC_TAG=":__entity__"
 
 
 
@@ -123,14 +124,18 @@ class UnsupNER:
 
 
 
+    #This now does specific tagging if there is a __entity__ in sentence; else does full tagging. TBD. This and tag_se_in_sentence and tag_sentence
     def tag_sentence(self,sent,rfp,dfp):
         debug_str_arr = []
         entity_info_arr = []
-        sent = self.normalize_casing(sent)
-        print("Caps normalized sentence:", sent)
-        url = self.pos_server_url  + sent.replace('"','\'')
-        r = self.dispatch_request(url)
-        terms_arr = self.extract_POS(r.text)
+        #sent = self.normalize_casing(sent)
+        #print("Caps normalized sentence:", sent)
+        if (SPECIFIC_TAG in sent):
+            terms_arr = set_POS_based_on_entities(sent)
+        else:
+            url = self.pos_server_url  + sent.replace('"','\'')
+            r = self.dispatch_request(url)
+            terms_arr = self.extract_POS(r.text)
         masked_sent_arr,span_arr = generate_masked_sentences(terms_arr)
         masked_sent_arr,span_arr = filter_common_noun_spans(span_arr,masked_sent_arr,terms_arr,self.common_descs)
         singleton_sentences,singleton_spans_arr = self.gen_single_phrase_sentences(terms_arr,masked_sent_arr,span_arr,rfp,dfp)
@@ -595,9 +600,10 @@ def tag_single_entity_in_sentence(file_name,obj):
 def test_canned_sentences(obj):
     rfp = open("results.txt","w")
     dfp = open("debug.txt","w")
-    obj.tag_sentence("engineer",rfp,dfp)
-    obj.tag_sentence("Austin called",rfp,dfp)
     obj.tag_sentence("Her hypophysitis secondary to ipilimumab was well managed with supplemental hormones",rfp,dfp)
+    obj.tag_sentence("In Seattle:__entity__ , Pete Incaviglia 's grand slam with one out in the sixth snapped a tie and lifted the Baltimore Orioles past the Seattle           Mariners , 5-2 .",rfp,dfp)
+    obj.tag_sentence("engineer",rfp,dfp)
+    obj.tag_sentence("Austin:__entity__ called",rfp,dfp)
     obj.tag_sentence("ajit rajasekharan is an engineer",rfp,dfp)
     obj.tag_sentence("Paul Erdős died at 83",rfp,dfp)
     obj.tag_sentence("Imatinib mesylate is a drug and is used to treat nsclc",rfp,dfp)
