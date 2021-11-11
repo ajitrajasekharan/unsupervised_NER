@@ -377,6 +377,8 @@ class UnsupNER:
                     #aggregate_entities[curr_e[j]] += float(desc_weights[i+1])
             i += 2
         final_sorted_d = OrderedDict(sorted(aggregate_entities.items(), key=lambda kv: kv[1], reverse=True))
+        if (len(final_sorted_d) == 0): #Case where all terms are tagged OTHER
+            final_sorted_d = {"OTHER":1}
         factors = list(final_sorted_d.values()) #convert dict values to an array
         factors = list(map(float, factors))
         total = sum(factors)
