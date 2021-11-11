@@ -408,8 +408,8 @@ class UnsupNER:
             curr_counts_sum = sum(map(int,curr_counts))
             curr_counts_sum = 1 if curr_counts_sum == 0 else curr_counts_sum
             for j in range(len(curr_e)):
-                if (curr_e[j] == "OTHER"):
-                    continue
+                #if (curr_e[j] == "OTHER"):
+                #    continue
                 if (curr_e[j] not in aggregate_entities):
                     aggregate_entities[curr_e[j]] = (float(curr_counts[j])/curr_counts_sum)*float(desc_weights[i+1])
                     #aggregate_entities[curr_e[j]] = float(desc_weights[i+1])
