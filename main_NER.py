@@ -63,11 +63,17 @@ class UnsupNER:
         self.entity_server_url  = cf.read_config()["ENTITY_SERVER_URL"]
         self.common_descs = read_common_descs(cf.read_config()["COMMON_DESCS_FILE"])
         self.entity_map = read_entity_map(cf.read_config()["EMAP_FILE"])
-        self.rfp = open("log_results.txt","w")
-        self.dfp = open("log_debug.txt","w")
+        self.rfp = open("log_results.txt","a")
+        self.dfp = open("log_debug.txt","a")
         print(self.pos_server_url)
         print(self.desc_server_url)
         print(self.entity_server_url)
+        np.set_printoptions(suppress=True) #this suppresses exponential representation when np is used to round
+        if (cf.read_config()["SUPPRESS_UNTAGGED"] == "1"):
+            self.suppress_untagged = True
+        else:
+            self.suppress_untagged = False #This is disabled in full debug text mode
+
 
     #This is bad hack for prototyping - parsing from text output as opposed to json
     def extract_POS(self,text):
@@ -102,9 +108,9 @@ class UnsupNER:
 
     def tag_sentence_service(self,text,full_sentence_tag):
         if (full_sentence_tag):
-            ret_str = self.tag_sentence(text,self.rfp,self.dfp)
+            ret_str = self.tag_sentence(text,self.rfp,self.dfp,True)
         else:
-            entity_arr,span_arr,terms_arr,ner_str,debug_str = self.tag_se_in_sentence(text,self.rfp,self.dfp)
+            entity_arr,span_arr,terms_arr,ner_str,debug_str = self.tag_sentence(text,self.rfp,self.dfp,False)
             ret_str = ner_str + "\nDEBUG_OUTPUT\n" + '\n'.join(debug_str)
         return ret_str
 
@@ -122,12 +128,98 @@ class UnsupNER:
                 count += 1
         return ret_dict,ref_indices_arr
 
+    def pool_confidences(self,ci_entities,ci_confidences,ci_subtypes,cs_entities,cs_confidences,cs_subtypes,debug_str_arr):
+        main_classes = {}
+        assert(len(cs_entities) ==  len(cs_confidences))
+        assert(len(cs_subtypes) ==  len(cs_entities))
+        assert(len(ci_entities) ==  len(ci_confidences))
+        assert(len(ci_subtypes) ==  len(ci_entities))
+        #Pool entity classes across CI and CS
+        for e,c in zip(ci_entities,ci_confidences):
+            e_base = e.split('[')[0]
+            main_classes[e_base] = float(c)
+        for e,c in zip(cs_entities,cs_confidences):
+            e_base = e.split('[')[0]
+            if (e_base in main_classes):
+                main_classes[e_base] += float(c)
+            else:
+                main_classes[e_base] = float(c)
+        final_sorted_d = OrderedDict(sorted(main_classes.items(), key=lambda kv: kv[1], reverse=True))
+        main_dist = self.convert_positive_nums_to_dist(final_sorted_d)
+        main_classes_arr = list(final_sorted_d.keys())
+        print(main_classes_arr)
+        print(main_dist)
+        #Pool subtypes across CI and CS for a particular entity class
+        subtype_factors = {}
+        for e_class in final_sorted_d:
+            if e_class in cs_subtypes:
+                stypes = cs_subtypes[e_class]
+                if (e_class not in subtype_factors):
+                    subtype_factors[e_class] = {}
+                for st in stypes:
+                    if (st in subtype_factors[e_class]):
+                        subtype_factors[e_class][st] += stypes[st]
+                    else:
+                        subtype_factors[e_class][st] = stypes[st]
+            if e_class in ci_subtypes:
+                stypes = ci_subtypes[e_class]
+                if (e_class not in subtype_factors):
+                    subtype_factors[e_class] = {}
+                for st in stypes:
+                    if (st in subtype_factors[e_class]):
+                        subtype_factors[e_class][st] += stypes[st]
+                    else:
+                        subtype_factors[e_class][st] = stypes[st]
+        sorted_subtype_factors = {}
+        for e_class in subtype_factors:
+            stypes = subtype_factors[e_class]
+            final_sorted_d = OrderedDict(sorted(stypes.items(), key=lambda kv: kv[1], reverse=True))
+            stypes_dist = self.convert_positive_nums_to_dist(final_sorted_d)
+            stypes_class_arr = list(final_sorted_d.keys())
+            sorted_subtype_factors[e_class] = {"stypes":stypes_class_arr,"dist":stypes_dist}
+        pooled_results = OrderedDict()
+        assert(len(main_classes_arr) == len(main_dist))
+        d_str_arr = []
+        d_str_arr.append("***CONSOLIDATED ENTITY:")
+        for e,c in zip(main_classes_arr,main_dist):
+            pooled_results[e] = {"e":e,"confidence":c}
+            d_str_arr.append(e + " " + str(c))
+            stypes_dict = sorted_subtype_factors[e]
+            pooled_st = OrderedDict()
+            for st,sd in zip(stypes_dict["stypes"],stypes_dict["dist"]):
+                pooled_st[st] = sd
+            pooled_results[e]["stypes"] = pooled_st
+        debug_str_arr.append(' '.join(d_str_arr))
+        return pooled_results
 
 
-    #This now does specific tagging if there is a __entity__ in sentence; else does full tagging. TBD. This and tag_se_in_sentence and tag_sentence
-    def tag_sentence(self,sent,rfp,dfp):
+
+
+
+
+
+
+
+    def init_entity_info(self,entity_info_dict,index):
+        curr_term_dict = OrderedDict()
+        entity_info_dict[index] = curr_term_dict
+        curr_term_dict["ci"] = OrderedDict()
+        curr_term_dict["ci"]["entities"] = []
+        curr_term_dict["ci"]["descs"] = []
+        curr_term_dict["cs"] = OrderedDict()
+        curr_term_dict["cs"]["entities"] = []
+        curr_term_dict["cs"]["descs"] = []
+
+
+
+
+    #This now does specific tagging if there is a __entity__ in sentence; else does full tagging. TBD.
+    #TBD. Make response params same regardlesss of output format. Now it is different
+    def tag_sentence(self,sent,rfp,dfp,json_output):
+        dfp.write("\n\n++++-------------------------------\n")
+        dfp.write("NER_INPUT: " + sent + "\n")
         debug_str_arr = []
-        entity_info_arr = []
+        entity_info_dict = OrderedDict()
         #sent = self.normalize_casing(sent)
         #print("Caps normalized sentence:", sent)
         if (SPECIFIC_TAG in sent):
@@ -139,42 +231,65 @@ class UnsupNER:
         masked_sent_arr,span_arr = generate_masked_sentences(terms_arr)
         masked_sent_arr,span_arr = filter_common_noun_spans(span_arr,masked_sent_arr,terms_arr,self.common_descs)
         singleton_sentences,singleton_spans_arr = self.gen_single_phrase_sentences(terms_arr,masked_sent_arr,span_arr,rfp,dfp)
-        singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr,debug_str_arr,[]) #Ignore entity type for singleton prediction for prob distribution purposes
-        detected_entities_arr,ner_str = self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr,entity_info_arr)
+        #Find CI predictions for ALL masked predictios in sentence
+        ci_predictions = self.find_ci_entities(singleton_sentences,singleton_spans_arr,debug_str_arr,entity_info_dict)
+        #Find CS predictions for ALL masked predictios in sentence. Use the CI predictions from previous step to
+        #pool
+        detected_entities_arr,ner_str,full_pooled_results = self.find_cs_entities(sent,terms_arr,masked_sent_arr,span_arr,rfp,dfp,debug_str_arr,ci_predictions,entity_info_dict)
+        assert(len(detected_entities_arr) == len(entity_info_dict))
         print("--------")
-        if (len(detected_entities_arr) != len(entity_info_arr)):
-            if (len(entity_info_arr) == 0):
-                entity_info_arr.append([{"e":"O","confidence":1}])
-        ret_dict,ref_indices_arr  = self.dictify_ner_response(ner_str)
-        assert(len(ref_indices_arr)  == len(detected_entities_arr))
-        aux_dict = OrderedDict()
-        count = 0
-        for e,c in zip(detected_entities_arr,entity_info_arr):
-            aux_dict[ref_indices_arr[count]] = {"e":e,"cs_distribution":c}
-            count += 1
-        #print(ret_dict)
-        #print(aux_dict)
-        final_ret_dict = {"total_terms_count":len(ret_dict),"detected_entity_phrases_count":len(detected_entities_arr),"ner":ret_dict,"cs_prediction_details":aux_dict}
-        json_str = json.dumps(final_ret_dict,indent = 4)
-        print (json_str)
-        return json_str
+        if (json_output):
+            if (len(detected_entities_arr) != len(entity_info_dict)):
+                if (len(entity_info_dict) == 0):
+                    self.init_entity_info(entity_info_dict,index)
+                    entity_info_dict[1]["cs"]["entities"].append([{"e":"O","confidence":1}])
+                    entity_info_dict[1]["ci"]["entities"].append([{"e":"O","confidence":1}])
+            ret_dict,ref_indices_arr  = self.dictify_ner_response(ner_str) #Convert ner string to a dictionary for json output
+            assert(len(ref_indices_arr)  == len(detected_entities_arr))
+            assert(len(entity_info_dict)  == len(detected_entities_arr))
+            cs_aux_dict = OrderedDict()
+            ci_aux_dict = OrderedDict()
+            pooled_pred_dict = OrderedDict()
+            count = 0
+            assert(len(full_pooled_results) == len(detected_entities_arr))
+            for e,c,p in zip(detected_entities_arr,entity_info_dict,full_pooled_results):
+                val = entity_info_dict[c]
+                #cs_aux_dict[ref_indices_arr[count]] = {"e":e,"cs_distribution":val["cs"]["entities"],"cs_descs":val["cs"]["descs"]}
+                pooled_pred_dict[ref_indices_arr[count]] = {"e": e, "cs_distribution": list(p.values())}
+                cs_aux_dict[ref_indices_arr[count]] = {"e":e,"cs_descs":val["cs"]["descs"]}
+                #ci_aux_dict[ref_indices_arr[count]] = {"ci_distribution":val["ci"]["entities"],"ci_descs":val["ci"]["descs"]}
+                ci_aux_dict[ref_indices_arr[count]] = {"ci_descs":val["ci"]["descs"]}
+                count += 1
+            #print(ret_dict)
+            #print(aux_dict)
+            final_ret_dict = {"total_terms_count":len(ret_dict),"detected_entity_phrases_count":len(detected_entities_arr),"ner":ret_dict,"entity_distribution":pooled_pred_dict,"cs_prediction_details":cs_aux_dict,"ci_prediction_details":ci_aux_dict,"debug":debug_str_arr}
+            json_str = json.dumps(final_ret_dict,indent = 4)
+            #print (json_str)
+            #with open("single_debug.txt","w") as fp:
+            #    fp.write(json_str)
 
-    def tag_se_in_sentence(self,sent,rfp,dfp):
-        #sent = self.normalize_casing(sent)
-        debug_str_arr = []
-        entity_info_arr = []
-        print("Caps normalized:", sent)
-        terms_arr = set_POS_based_on_entities(sent)
-        masked_sent_arr,span_arr = generate_masked_sentences(terms_arr)
-        masked_sent_arr,span_arr = filter_common_noun_spans(span_arr,masked_sent_arr,terms_arr,self.common_descs)
-        singleton_sentences,singleton_spans_arr = self.gen_single_phrase_sentences(terms_arr,masked_sent_arr,span_arr,rfp,dfp)
-        singleton_entities = self.find_singleton_entities(singleton_sentences,singleton_spans_arr,debug_str_arr,entity_info_arr)
-        detected_entities_arr,ner_str = self.find_entities(sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr,entity_info_arr)
-        print(detected_entities_arr)
-        debug_str_arr.append("NER_FINAL_RESULTS: " + ' '.join(detected_entities_arr))
-        print("--------")
-        return detected_entities_arr,span_arr,terms_arr,ner_str,debug_str_arr
+            dfp.write('\n'.join(debug_str_arr))
+            dfp.write("\n\nEND-------------------------------\n")
+            dfp.flush()
+            return json_str
+        else:
+            print(detected_entities_arr)
+            debug_str_arr.append("NER_FINAL_RESULTS: " + ' '.join(detected_entities_arr))
+            print("--------")
+            dfp.write('\n'.join(debug_str_arr))
+            dfp.write("\n\nEND-------------------------------\n")
+            dfp.flush()
+            return detected_entities_arr,span_arr,terms_arr,ner_str,debug_str_arr
 
+    def masked_word_first_letter_capitalize(self,entity):
+        arr = entity.split()
+        ret_arr = []
+        for term in arr:
+            if (len(term) > 1 and term[0].islower() and term[1].islower()):
+                ret_arr.append(term[0].upper() + term[1:])
+            else:
+                ret_arr.append(term)
+        return ' '.join(ret_arr)
 
 
     def gen_single_phrase_sentences(self,terms_arr,masked_sent_arr,span_arr,rfp,dfp):
@@ -202,6 +317,7 @@ class UnsupNER:
                 for i in sentence_template.split():
                     if (i != "%s"):
                         singleton_span.append(0)
+                entity = self.masked_word_first_letter_capitalize(entity)
                 sentence = sentence_template % entity
                 sentences.append(sentence)
                 singleton_spans_arr.append(singleton_span)
@@ -214,47 +330,69 @@ class UnsupNER:
         return sentences,singleton_spans_arr
 
 
-    def find_singleton_entities(self,masked_sent_arr,span_arr,debug_str_arr,entity_info_arr):
-        detected_entities_arr = []
+    def find_ci_entities(self,masked_sent_arr,span_arr,debug_str_arr,entity_info_dict):
+        term_index = 1
+        ci_predictions = []
         for dummy,masked_sent in enumerate(masked_sent_arr):
             print(masked_sent)
             debug_str_arr.append(masked_sent)
-            descs = self.get_descriptors_for_masked_position(masked_sent,True,debug_str_arr)
-            entities,confidences = self.get_entities_for_masked_position(descs,debug_str_arr,entity_info_arr)
-            self.fill_detected_entities(detected_entities_arr,entities,span_arr)
-        return detected_entities_arr
+            #entity_info_dict["masked_sent"].append(masked_sent)
+            descs = self.get_descriptors_for_masked_position(masked_sent,True)
+            self.init_entity_info(entity_info_dict,term_index)
+            entities,confidences,subtypes = self.get_entities_for_masked_position(descs,debug_str_arr,entity_info_dict[term_index]["ci"])
+            ci_predictions.append({"entities":entities,"confidences":confidences,"subtypes":subtypes})
+            term_index += 1
+        return ci_predictions
 
 
 
     #We have multiple masked versions of a single sentence. Tag each one of them
     #and create a complete tagged version for a sentence
-    def find_entities(self,sent,terms_arr,masked_sent_arr,span_arr,singleton_entities,rfp,dfp,debug_str_arr,entity_info_arr):
+    def find_cs_entities(self,sent,terms_arr,masked_sent_arr,span_arr,rfp,dfp,debug_str_arr,ci_predictions,entity_info_dict):
         #print(sent)
         print(span_arr)
         dfp.write(sent + "\n")
         dfp.write(str(span_arr) + "\n")
+        term_index = 1
         detected_entities_arr = []
-        for i,masked_sent in enumerate(masked_sent_arr):
+        full_pooled_results = []
+        for index,masked_sent in enumerate(masked_sent_arr):
+            ci_entities = ci_predictions[index]["entities"]
+            ci_confidences = ci_predictions[index]["confidences"]
+            ci_subtypes = ci_predictions[index]["subtypes"]
             masked_sent = ' '.join(masked_sent)
             print(masked_sent)
-            debug_str_arr.append(masked_sent)
+            debug_str_arr.append("\n++++++ SENT: " + masked_sent)
             dfp.write(masked_sent + "\n")
-            descs = self.get_descriptors_for_masked_position(masked_sent,False,debug_str_arr)
+            descs = self.get_descriptors_for_masked_position(masked_sent,False)
             dfp.write(str(descs) + "\n")
             if (len(descs) > 0):
-                entities,confidences = self.get_entities_for_masked_position(descs,debug_str_arr,entity_info_arr)
+                cs_entities,cs_confidences,cs_subtypes = self.get_entities_for_masked_position(descs,debug_str_arr,entity_info_dict[term_index]["cs"])
             else:
-                entities = []
-            dfp.write(str(entities) + "\n")
-            self.fill_detected_entities(detected_entities_arr,entities,span_arr)
-            self.resolve_entities(i,singleton_entities,detected_entities_arr)
-        ner_str = self.emit_sentence_entities(sent,terms_arr,detected_entities_arr,span_arr,rfp)
+                cs_entities = []
+                cs_confidences = []
+                cs_subtypes = []
+            dfp.write(str(cs_entities) + "\n")
+            pooled_results = self.pool_confidences(ci_entities,ci_confidences,ci_subtypes,cs_entities,cs_confidences,cs_subtypes,debug_str_arr)
+            self.fill_detected_entities(detected_entities_arr,pooled_results) #just picks the top prediction
+            full_pooled_results.append(pooled_results)
+            #self.old_resolve_entities(i,singleton_entities,detected_entities_arr) #This decides how to pick entities given CI and CS predictions
+            term_index += 1
+        #out of the full loop over sentences. Now create NER sentence
+        ner_str = self.emit_sentence_entities(sent,terms_arr,detected_entities_arr,span_arr,rfp) #just outputs results in NER Conll format
         dfp.flush()
-        return detected_entities_arr,ner_str
+        return detected_entities_arr,ner_str,full_pooled_results
 
-    def fill_detected_entities(self,detected_entities_arr,entities,pan_arr):
+
+    def fill_detected_entities(self,detected_entities_arr,entities):
         if (len(entities) > 0):
-            detected_entities_arr.append(next(iter(entities)))
+            top_e_class = next(iter(entities))
+            top_subtype = next(iter(entities[top_e_class]["stypes"]))
+            if (top_e_class != top_subtype):
+                top_prediction = top_e_class + "[" + top_subtype + "]"
+            else:
+                top_prediction = top_e_class
+            detected_entities_arr.append(top_prediction)
         else:
             detected_entities_arr.append("OTHER")
 
@@ -279,7 +417,7 @@ class UnsupNER:
         detected_entities_arr.append(first)
 
     #Contextual entity is picked as first candidate before context independent candidate
-    def resolve_entities(self,index,singleton_entities,detected_entities_arr):
+    def old_resolve_entities(self,index,singleton_entities,detected_entities_arr):
         if (singleton_entities[index].split('[')[0] != detected_entities_arr[index].split('[')[0]):
             if (singleton_entities[index].split('[')[0] != "OTHER" and detected_entities_arr[index].split('[')[0] != "OTHER"):
                 detected_entities_arr[index] = detected_entities_arr[index] + "/" +  singleton_entities[index]
@@ -360,7 +498,7 @@ class UnsupNER:
 
 
 
-    def get_descriptors_for_masked_position(self,masked_sent,usecls,debug_str_arr):
+    def get_descriptors_for_masked_position(self,masked_sent,usecls):
         masked_sent = masked_sent.replace(MASK_TAG,DISPATCH_MASK_TAG)
         ret_val = self.match_templates(masked_sent)
         if (ret_val != None):
@@ -371,7 +509,6 @@ class UnsupNER:
             r = self.dispatch_request(self.desc_server_url+usecls_option + str(masked_sent))
             desc_arr = self.extract_descs(r.text)
         print(desc_arr)
-        #debug_str_arr.append(' '.join(desc_arr))
         return desc_arr
 
     def dispatch_request(self,url):
@@ -389,7 +526,19 @@ class UnsupNER:
                 print("Request:", url, " failed")
                 break
 
-    def aggregate_entities(self,entities,desc_weights,debug_str_arr,entity_info_arr):
+    def convert_positive_nums_to_dist(self,final_sorted_d):
+        factors = list(final_sorted_d.values()) #convert dict values to an array
+        factors = list(map(float, factors))
+        total = float(sum(factors))
+        if (total == 0):
+            total = 1
+            factors[0] = 1 #just make the sum 100%. This a boundary case for numbers for instance
+        factors = np.array(factors)
+        factors = factors/total
+        factors = np.round(factors,4)
+        return factors
+
+    def aggregate_entities(self,entities,desc_weights,debug_str_arr,entity_info_dict_entities):
         ''' Given a masked position, whose entity we are trying to determine,
             First get descriptors for that postion 2*N array [desc1,score1,desc2,score2,...]
             Then for each descriptor, get entity predictions which is an array 2*N of the form [e1,score1,e2,score2,...] where e1 could be DRUG/DISEASE and score1 is 10/8 etc.
@@ -404,12 +553,12 @@ class UnsupNER:
         while (i < count):
             curr_counts = entities[i+1].split('/')
             curr_e = self.map_entities(entities[i].split('/'),curr_counts,subtypes)
-            assert(len(curr_e) == len(curr_counts))
+            assert(len(curr_e) <= len(curr_counts)) # can be less if untagges is skipped
             curr_counts_sum = sum(map(int,curr_counts))
             curr_counts_sum = 1 if curr_counts_sum == 0 else curr_counts_sum
             for j in range(len(curr_e)):
-                #if (curr_e[j] == "OTHER"):
-                #    continue
+                if (self.skip_untagged(curr_e[j])):
+                    continue
                 if (curr_e[j] not in aggregate_entities):
                     aggregate_entities[curr_e[j]] = (float(curr_counts[j])/curr_counts_sum)*float(desc_weights[i+1])
                     #aggregate_entities[curr_e[j]] = float(desc_weights[i+1])
@@ -418,20 +567,15 @@ class UnsupNER:
                     #aggregate_entities[curr_e[j]] += float(desc_weights[i+1])
             i += 2
         final_sorted_d = OrderedDict(sorted(aggregate_entities.items(), key=lambda kv: kv[1], reverse=True))
-        factors = list(final_sorted_d.values()) #convert dict values to an array
-        factors = list(map(float, factors))
-        total = sum(factors)
-        if (total == 0):
-            total = 1
-            factors[0] = 1 #just make the sum 100%. This a boundary case for numbers for instance
-        factors = np.array(factors)
-        factors = factors/total
-        factors = np.round(factors,2)
+        if (len(final_sorted_d) == 0): #Case where all terms are tagged OTHER
+            final_sorted_d = {"OTHER":1}
+            subtypes["OTHER"] = {"OTHER":1}
+        factors = self.convert_positive_nums_to_dist(final_sorted_d)
         ret_entities = list(final_sorted_d.keys())
         confidences = factors.tolist()
         print(ret_entities)
-        self.sort_subtypes(subtypes)
-        ret_entities = self.update_entities_with_subtypes(ret_entities,subtypes)
+        sorted_subtypes = self.sort_subtypes(subtypes)
+        ret_entities = self.update_entities_with_subtypes(ret_entities,sorted_subtypes)
         print(ret_entities)
         debug_str_arr.append(" ")
         debug_str_arr.append(' '.join(ret_entities))
@@ -440,16 +584,18 @@ class UnsupNER:
         arr = []
         for e,c in zip(ret_entities,confidences):
             arr.append({"e":e,"confidence":c})
-        entity_info_arr.append(arr)
+        entity_info_dict_entities.append(arr)
         debug_str_arr.append(' '.join([str(x) for x in confidences]))
         debug_str_arr.append("\n\n")
-        return ret_entities,confidences
+        return ret_entities,confidences,subtypes
 
 
     def sort_subtypes(self,subtypes):
+        sorted_subtypes =  OrderedDict()
         for ent in subtypes:
             final_sorted_d = OrderedDict(sorted(subtypes[ent].items(), key=lambda kv: kv[1], reverse=True))
-            subtypes[ent]  = list(final_sorted_d.keys())
+            sorted_subtypes[ent]  = list(final_sorted_d.keys())
+        return sorted_subtypes
 
     def update_entities_with_subtypes(self,ret_entities,subtypes):
         new_entities = []
@@ -464,11 +610,18 @@ class UnsupNER:
                 new_entities.append(ent)
         return new_entities
 
+    def skip_untagged(self,term):
+        if (self.suppress_untagged == True and (term == "OTHER" or term == "UNTAGGED_ENTITY")):
+                return True
+        return False
+
 
     def map_entities(self,arr,counts_arr,subtypes_dict):
         ret_arr = []
         index = 0
         for i in arr:
+            if (self.skip_untagged(i)):
+                continue
             ret_arr.append(self.entity_map[i])
             #if (i != self.entity_map[i]):
             if (True):
@@ -476,7 +629,7 @@ class UnsupNER:
                     subtypes_dict[self.entity_map[i]] = {}
                 if (i not in subtypes_dict[self.entity_map[i]]):
                     #subtypes_dict[self.entity_map[i]][i] = int(counts_arr[index])
-                    subtypes_dict[self.entity_map[i]][i] = 1 #just count the number of occurrence of subtypes as opposed to their counts in clusters
+                    subtypes_dict[self.entity_map[i]][i] = 1 #just count the number of occurrence of subtypes as opposed to their counts in clusters. This is to avoid cluster context overwhelming the current sentence context. Consider using this as a fractional score of total sense counts once labeling is mature
                 else:
                     #subtypes_dict[self.entity_map[i]][i] += int(counts_arr[index])
                     subtypes_dict[self.entity_map[i]][i] += 1
@@ -484,19 +637,33 @@ class UnsupNER:
         return ret_arr
 
 
-    def get_entities_for_masked_position(self,descs,debug_str_arr,entity_info_arr):
+    def get_entities_for_masked_position(self,descs,debug_str_arr,entity_info_dict):
         param = ' '.join(descs[::2]) #send only the descriptors - not the neighborhood scores
         r = self.dispatch_request(self.entity_server_url+str(param))
         entities = r.text.split()
         print(entities)
         debug_combined_arr =[]
+        desc_arr =[]
+        assert(len(descs) %2 == 0)
+        assert(len(entities) %2 == 0)
+        index = 0
         for d,e in zip(descs,entities):
             debug_combined_arr.append(d + " " + e)
+            if (index % 2 == 0):
+                temp_dict = OrderedDict()
+                temp_dict["d"] = d
+                temp_dict["e"] = e
+            else:
+                temp_dict["mlm"] = d
+                temp_dict["l_score"] = e
+                desc_arr.append(temp_dict)
+            index += 1
         debug_str_arr.append(', '.join(debug_combined_arr))
+        entity_info_dict["descs"] = desc_arr
         #debug_str_arr.append(' '.join(entities))
         assert(len(entities) == len(descs))
-        entities,confidences = self.aggregate_entities(entities,descs,debug_str_arr,entity_info_arr)
-        return entities,confidences
+        entities,confidences,subtypes = self.aggregate_entities(entities,descs,debug_str_arr,entity_info_dict["entities"])
+        return entities,confidences,subtypes
 
 
    #This is again a bad hack for prototyping purposes - extracting fields from a raw text output as opposed to a structured output like json
@@ -582,12 +749,13 @@ def tag_single_entity_in_sentence(file_name,obj):
         for line in fp:
             if (len(line) > 1):
                 print(str(count) + "] ",line,end='')
-                entity_arr,span_arr,terms_arr,ner_str,debug_str = obj.tag_se_in_sentence(line,rfp,dfp)
-                print("*******************:",terms_arr[span_arr.index(1)][WORD_POS].rstrip(":"),entity_arr[0])
-                sfp.write(terms_arr[span_arr.index(1)][WORD_POS].rstrip(":") + " " + entity_arr[0] + "\n")
+                #entity_arr,span_arr,terms_arr,ner_str,debug_str = obj.tag_sentence(line,rfp,dfp,False) # False for json output
+                json_str = obj.tag_sentence(line,rfp,dfp,True) # True for json output
+                pdb.set_trace()
+                #print("*******************:",terms_arr[span_arr.index(1)][WORD_POS].rstrip(":"),entity_arr[0])
+                #sfp.write(terms_arr[span_arr.index(1)][WORD_POS].rstrip(":") + " " + entity_arr[0] + "\n")
                 count += 1
                 sfp.flush()
-                pdb.set_trace()
     rfp.close()
     sfp.close()
     dfp.close()
