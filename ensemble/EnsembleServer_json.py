@@ -4,11 +4,10 @@ import ResponseHandler
 import subprocess
 import urllib
 import ensemble
-import aggregate_server_json
+import aggregate_server_json as ag
 import pdb
 import json
 
-LOG_FILE = "query_response_log.txt"
 
 singleton = None
 try:
@@ -23,15 +22,14 @@ class NerServer(ResponseHandler.ResponseHandler):
         print("In derived class")
         global singleton
         if singleton is None:
-            singleton = open(LOG_FILE,"a")
+            singleton = ag.AggregateNER()
         if (write_obj is not None):
             param =write_obj.path[1:]
             print("Orig Arg = ",param)
             param = '/'.join(param.split('/')[1:])
             print("Json API param removed Arg = ",param)
             param = urllib.parse.unquote(param)
-            #out = singleton.tag_sentence_service(param)
-            out = aggregate_server_json.fetch_all(param)
+            out = singleton.fetch_all(param)
             out = json.dumps(out,indent=5)
             print(out)
             print("Task complete. Writing out:",len(out))
@@ -39,8 +37,6 @@ class NerServer(ResponseHandler.ResponseHandler):
                 write_obj.wfile.write(out.encode())
             else:
                 write_obj.wfile.write("0".encode())
-            singleton.write(out)
-            singleton.flush()
             print("Write complete. Returning from handler")
             #write_obj.wfile.write("\nNF_EOS\n".encode())
 

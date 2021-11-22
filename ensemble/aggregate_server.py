@@ -15,7 +15,7 @@ RESULT_MASK = "NER_FINAL_RESULTS:"
 bio_precedence_arr = [ "THERAPEUTIC_OR_PREVENTIVE_PROCEDURE",
 "DISEASE",
 "GENE",
-"BODY_PART_OR_ORGAN_OR_ORGAN_COMPONENT",
+"BODY_PART_OR_ORGAN_COMPONENT",
 "ORGANISM_FUNCTION",
 "BIO",
 "OBJECT",
@@ -37,8 +37,8 @@ phi_precedence_arr = [
 ]
 
 actions_arr = [
-        {"url":"http://127.0.0.1:8088/dummy/","desc":"****************** A100 trained Bio model (Pubmed,Clincial trials, Bookcorpus(subset) **********","precedence":bio_precedence_arr},
-        {"url":"http://127.0.0.1:9088/dummy/","desc":"********** Bert base cased (bookcorpus and Wikipedia) ***********","precedence":phi_precedence_arr}
+        {"url":"http://127.0.0.1:8089/dummy/","desc":"****************** A100 trained Bio model (Pubmed,Clincial trials, Bookcorpus(subset) **********","precedence":bio_precedence_arr},
+        {"url":"http://127.0.0.1:8090/dummy/","desc":"********** Bert base cased (bookcorpus and Wikipedia) ***********","precedence":phi_precedence_arr}
         ]
 
 class myThread (threading.Thread):

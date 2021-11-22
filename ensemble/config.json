@@ -1,2 +1,35 @@
-{"NER_SERVERS": ["http://127.0.0.1:9088/dummy/","http://127.0.0.1:9089/dummy/"]
+{"NER_SERVERS": ["http://127.0.0.1:8089/dummy/","http://127.0.0.1:8090/dummy/"],
+"bio_precedence_arr": [ 
+"THERAPEUTIC_OR_PREVENTIVE_PROCEDURE",
+"DISEASE",
+"GENE",
+"BODY_PART_OR_ORGAN_COMPONENT",
+"ORGANISM_FUNCTION"
+],
+
+"phi_precedence_arr" : [
+"PERSON",
+"LOCATION",
+"ORGANIZATION",
+"ENT",
+"COLOR",
+"LANGUAGE",
+"GRAMMAR_CONSTRUCT",
+"SOCIAL_CIRCUMSTANCES"
+],
+
+"common_entities_arr":
+[
+    "BIO",
+    "UNTAGGED_ENTITY",
+    "OTHER",
+    "GRAMMAR_CONSTRUCT",
+    "OBJECT",
+    "MEASURE"
+],
+
+"actions_arr" : [
+        {"url":"http://127.0.0.1:8089/dummy/","desc":"****************** A100 trained Bio model (Pubmed,Clincial trials, Bookcorpus(subset) **********"},
+        {"url":"http://127.0.0.1:8090/dummy/","desc":"********** Bert base cased (bookcorpus and Wikipedia) ***********"}
+        ]
 }
