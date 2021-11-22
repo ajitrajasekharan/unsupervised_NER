@@ -4,6 +4,7 @@ import sys
 WORD_POS = 1
 TAG_POS = 2
 MASK_TAG = "__entity__"
+INPUT_MASK_TAG = ":__entity__"
 RESET_POS_TAG='RESET'
 
 
@@ -70,7 +71,7 @@ def set_POS_based_on_entities(sent):
         term_tag = ['-']*5
         if (word.endswith(MASK_TAG)):
             term_tag[TAG_POS] = noun_tags[0]
-            term_tag[WORD_POS] = word.replace(MASK_TAG,"").rstrip(":")
+            term_tag[WORD_POS] = word.replace(INPUT_MASK_TAG,"")
         else:
             term_tag[TAG_POS] = RESET_POS_TAG
             term_tag[WORD_POS] = word
