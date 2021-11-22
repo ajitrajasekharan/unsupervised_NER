@@ -3,4 +3,5 @@
 "ENTITY_SERVER_URL": "http://127.0.0.1:8043/",
 "EMAP_FILE": "entity_types_consolidated.txt",
 "FULL_SENTENCE_TAG": "1",
+"SUPPRESS_UNTAGGED": "1",
 "COMMON_DESCS_FILE": "untagged_terms.txt"}
