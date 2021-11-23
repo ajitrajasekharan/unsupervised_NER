@@ -1,4 +1,4 @@
-{"NER_SERVERS": ["http://127.0.0.1:8089/dummy/","http://127.0.0.1:8090/dummy/"],
+{"NER_SERVERS": ["http://127.0.0.1:9088/dummy/","http://127.0.0.1:9089/dummy/"],
 "bio_precedence_arr": [ 
 "THERAPEUTIC_OR_PREVENTIVE_PROCEDURE",
 "DISEASE",
