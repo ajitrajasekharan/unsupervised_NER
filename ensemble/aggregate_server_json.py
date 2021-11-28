@@ -10,48 +10,56 @@ import config_utils as cf
 import json
 from  collections import OrderedDict
 import argparse
+import numpy as np
+import aggregate_server_json
 
 
 MASK = ":__entity__"
 RESULT_MASK = "NER_FINAL_RESULTS:"
 
-bio_precedence_arr = [ "THERAPEUTIC_OR_PREVENTIVE_PROCEDURE",
-"DISEASE",
-"GENE",
-"BODY_PART_OR_ORGAN_OR_ORGAN_COMPONENT",
-"ORGANISM_FUNCTION",
-"BIO",
-"OBJECT",
-"MEASURE"
-]
+DEFAULT_TEST_BATCH_FILE="bootstrap_test_set.txt"
+NER_OUTPUT_FILE="ner_output.txt"
 
-#this is a catchall
-phi_precedence_arr = [
-"PERSON",
-"ORGANIZATION",
-"ENT",
-"LOCATION",
-"COLOR",
-"LANGUAGE",
-"GRAMMAR_CONSTRUCT",
-"OTHER",
-"SOCIAL_CIRCUMSTANCES",
-"MEASURE",
-"OBJECT",
-"THERAPEUTIC_OR_PREVENTIVE_PROCEDURE",
-"DISEASE",
-"GENE",
-"BODY_PART_OR_ORGAN_OR_ORGAN_COMPONENT",
-"ORGANISM_FUNCTION",
-"BIO",
-"OBJECT",
-"O"
-]
 
 actions_arr = [
-        {"url":"http://127.0.0.1:8088/dummy/","desc":"****************** A100 trained Bio model (Pubmed,Clincial trials, Bookcorpus(subset) **********","precedence":bio_precedence_arr},
-        {"url":"http://127.0.0.1:9088/dummy/","desc":"********** Bert base cased (bookcorpus and Wikipedia) ***********","precedence":phi_precedence_arr}
+        {"url":cf.read_config()["actions_arr"][0]["url"],"desc":cf.read_config()["actions_arr"][0]["desc"], "precedence":cf.read_config()["bio_precedence_arr"],"common":cf.read_config()["common_entities_arr"]},
+        {"url":cf.read_config()["actions_arr"][1]["url"],"desc":cf.read_config()["actions_arr"][1]["desc"],"precedence":cf.read_config()["phi_precedence_arr"],"common":cf.read_config()["common_entities_arr"]},
         ]
+
+class AggregateNER:
+    def __init__(self):
+        self.rfp = open("query_response_log.txt","a")
+        self.query_log_fp = open("query_logs.txt","a")
+
+
+    def fetch_all(self,inp):
+        start = time.time()
+        self.query_log_fp.write(urllib.parse.unquote(inp)+"\n")
+        self.query_log_fp.flush()
+        print("Starting threads")
+        servers  = cf.read_config()["NER_SERVERS"]
+        if (len(servers) > 0):
+         assert(len(actions_arr) == len(servers)) #currently just using two servers. TBD. Fix
+         for i in range(len(actions_arr)):
+             actions_arr[i]["url"] = servers[i]
+        threads_arr = create_workers(actions_arr,inp)
+        start_workers(threads_arr)
+        wait_for_completion(threads_arr)
+        print("All threads complete")
+        results = get_results(threads_arr)
+#print(json.dumps(results,indent=4))
+
+#this updates results with ensembled results
+        results = ensemble_processing(inp,results)
+        end = time.time()
+
+        results["stats"] = { "Ensemble server count" : str(len(actions_arr)),
+                          "Elapsed time" : str(round(end-start,1)) + " secs"}
+
+        self.rfp.write( "\n" + json.dumps(results,indent=4))
+        self.rfp.flush()
+        return results
+
 
 class myThread (threading.Thread):
    def __init__(self, url,param,desc):
@@ -66,6 +74,7 @@ class myThread (threading.Thread):
       self.results = json.loads(out.text,object_pairs_hook=OrderedDict)
       self.results["server"] = self.desc
       print ("Exiting " + self.url + self.param)
+
 
 
 # Create new threads
@@ -89,31 +98,19 @@ def get_results(threads_arr):
         results.append(thread.results)
     return results
 
-#TBD. This needs to be done in a principled way.
-#for this first cut, INCARCERATION in second server, created a prediction with the main entity type of server1 and serve2 combined
-def override_bio_prediction1(orig_entity,frag,pos_index,servers,server_index):
-    main_entity = prefix_strip(frag.split('[')[0])
-    if (main_entity == "SOCIAL_CIRCUMSTANCES" or main_entity == "ORGANIZATION" ):  #for the first cut
-        return True
-    return False
-
-#TBD. This needs to be done in a principled way.
-#for this first cut, measure in bio space, is overriden by specific entities in phi server
-def override_bio_prediction2(orig_entity,frag,pos_index,servers,server_index):
-    main_entity = prefix_strip(frag.split('[')[0])
-    if (orig_entity == "MEASURE"  and  main_entity in servers[server_index]["precedence"]):  #for the first cut, MEASURE in bio server can be overriden by PHI server if the corresponding entity prediction by PHI server is part of the PHI server list
-        return True
-    return False
-
 
 def confirm_same_size_responses(results):
     count = 0
     for i in range(len(results)):
-        ner = results[i]["ner"]
+        if ("ner" in results[i]):
+            ner = results[i]["ner"]
+        else:
+            print("Server",i," returned invalid response;",results[i])
+            return 0
         if(count == 0):
             assert(len(ner) > 0)
             count = len(ner)
-        else: 
+        else:
             if (count != len(ner)):
                 assert(0)
     return count
@@ -123,142 +120,237 @@ def prefix_strip(term):
         term = term[2:]
     return term
 
+
+
+#This hack is simply done for downstream API used for UI displays the entity instead of the class. Details has all additional info
+def flip_category(obj):
+    new_obj = obj.copy()
+    entity_type_arr = obj["e"].split("[")
+    if (len(entity_type_arr) > 1):
+        term = entity_type_arr[0]
+        if (term.startswith("B_") or term.startswith("I_")):
+            prefix = term[:2]
+            new_obj["e"] =  prefix + entity_type_arr[1].rstrip("]") + "[" + entity_type_arr[0][2:] + "]"
+        else:
+            new_obj["e"] =  entity_type_arr[1].rstrip("]") + "[" + entity_type_arr[0] + "]"
+    return new_obj
+
+
+def extract_main_entity(results,server_index,pos_index):
+    main_entity = results[server_index]["ner"][pos_index]["e"].split('[')[0]
+    main_entity = prefix_strip(main_entity)
+    return main_entity
+
+
+def get_span_info(results,server_index,term_index,terms_count):
+    pos_index = str(term_index + 1)
+    entity = results[server_index]["ner"][pos_index]["e"]
+    span_count = 1
+    assert(not entity.startswith("I_"))
+    if (entity.startswith("B_")):
+        term_index += 1
+        while(term_index < terms_count):
+            pos_index = str(term_index + 1)
+            entity = results[server_index]["ner"][pos_index]["e"]
+            if (entity == "O"):
+                break
+            span_count += 1
+            term_index += 1
+    return span_count
+
+def  is_included_in_server_entities(predictions,s_arr):
+    for entity in predictions:
+        if ((entity not in s_arr["precedence"]) and (entity not in s_arr["common"])): #treat the presence of an entity in common as a cross over
+            return False
+    return True
+
+def  get_predictions_above_mean(predictions):
+    dist = predictions["cs_distribution"]
+    sum_predictions = 0
+    ret_arr = []
+    for node in dist:
+        sum_predictions += node["confidence"]
+    assert(len(dist) != 0)
+    mean_score = sum_predictions/len(dist)
+    for node in dist:
+        if (node["confidence"] > mean_score):
+            ret_arr.append(node["e"])
+        else:
+            break #this is a reverse sorted list. So no need to check anymore
+    return ret_arr
+
+def check_cross_server_prediction(results,term_index,servers_arr):
+    pos_index = str(term_index + 1)
+    cross_predictions = {}
+    cross_prediction_count = 0
+    for server_index in range(len(results)):
+        if (pos_index in  results[server_index]["entity_distribution"]):
+             predictions = get_predictions_above_mean(results[server_index]["entity_distribution"][pos_index])
+             is_included = is_included_in_server_entities(predictions,servers_arr[server_index])
+             cross_predictions[server_index] = not is_included
+             cross_prediction_count += 1 if not is_included else 0
+    print("Cross prediction count for term: " + results[0]["ner"][pos_index]["term"] + " is :: " + str(cross_prediction_count))
+    return cross_predictions,cross_prediction_count
+
+def get_conflict_resolved_entity(results,term_index,terms_count,servers_arr):
+    pos_index = str(term_index + 1)
+    s1_entity  = extract_main_entity(results,0,pos_index)
+    s2_entity  = extract_main_entity(results,1,pos_index)
+    span_count1 = get_span_info(results,0,term_index,terms_count)
+    span_count2 = get_span_info(results,1,term_index,terms_count)
+    assert(span_count1 == span_count2)
+    if (s1_entity == s2_entity):
+        server_index = 0 if (s1_entity in servers_arr[0]["precedence"]) else 1
+        if (s1_entity != "O"):
+            print("Both servers agree on prediction for term:",results[0]["ner"][pos_index]["term"],":",s1_entity)
+        return server_index,span_count1,-1
+    else:
+        print("Servers do not agree on prediction for term:",results[0]["ner"][pos_index]["term"],":",s1_entity,s2_entity)
+        #Both the servers dont agree on their predictions. First server is BIO server. Second is PHI
+        #Examine both server predictions.
+        #Case 1: If one of them cross predicts, dump it.
+            #Return the other prediction (TBD. Assert the cross prediction is indeed part of the other servers above mean prediction?
+            #if not treat again as a tie and return both?).
+            #If both predict anyone of the common enitites "e.g. MEASURE", then treat it is as case 2. Both cross predict
+        #Case 2. If both cross predict, then return both predictions - this is a case both servers have low confidence
+        #Case 3: Both dont cross predict. Then just return both predictions with BIO prediction listed first.
+        #Cross prediction is checked only for  predictions a server makes ABOVE prediction  mean.
+        cross_predictions,cross_prediction_count = check_cross_server_prediction(results,term_index,servers_arr)
+        if (cross_prediction_count == 1):
+            ret_server_index = 1 if cross_predictions[0] == True else 0
+        else:
+            ret_server_index = 0
+    return ret_server_index,span_count1,cross_prediction_count
+
+
+def gen_resolved_entity(results,server_index,run_index,cross_prediction_count):
+    if (cross_prediction_count == 1 or cross_prediction_count == -1):
+        #return results[server_index]["ner"][run_index]
+        return flip_category(results[server_index]["ner"][run_index])
+    else:
+        ret_obj = results[server_index]["ner"][run_index].copy()
+        #ret_obj["e"] = results[0]["ner"][run_index]["e"] + "/" + results[1]["ner"][run_index]["e"]
+        n1 = flip_category(results[0]["ner"][run_index])
+        n2 = flip_category(results[1]["ner"][run_index])
+        ret_obj["e"] = n1["e"] + "/" + n2["e"]
+        return ret_obj
+
+
+
+
 def get_ensembled_entities(results,servers_arr):
-    ensembled = OrderedDict()
+    ensembled_ner = OrderedDict()
     ensembled_conf =  OrderedDict()
+    ambig_ensembled_conf =  OrderedDict()
+    ensembled_ci = OrderedDict()
+    ensembled_cs = OrderedDict()
+    ambig_ensembled_ci = OrderedDict()
+    ambig_ensembled_cs = OrderedDict()
     print("Ensemble candidates")
     terms_count =  confirm_same_size_responses(results)
+    if (terms_count == 0):
+        return ensembled_ner,ensembled_conf,ensembled_ci,ensembled_cs,ambig_ensembled_conf,ambig_ensembled_ci,ambig_ensembled_cs
     assert(len(servers_arr) == len(results))
-    for term_index  in range(terms_count):
-        match_dict = {}
-        conf_dict = {}
-        found = False
+    term_index = 0
+    while (term_index  < terms_count):
         pos_index = str(term_index + 1)
-        for server_index in range(len(results)):
-            main_entity = results[server_index]["ner"][pos_index]["e"].split('[')[0] 
-            main_entity = prefix_strip(main_entity)
-            if (main_entity in servers_arr[server_index]["precedence"]):
-                    if (server_index == 0 and override_bio_prediction1(main_entity,results[server_index + 1 ]["ner"][pos_index]["e"],pos_index,servers_arr,server_index + 1)):
-                        match_dict[pos_index]  = results[server_index + 1 ]["ner"][pos_index]["e"].split('[')[0]  + '/' + main_entity
-                        if (pos_index in  results[server_index + 1]["cs_prediction_details"]):
-                            conf_dict[pos_index] = results[server_index + 1]["cs_prediction_details"][pos_index]
-                    elif (server_index == 0 and override_bio_prediction2(main_entity,results[server_index + 1 ]["ner"][pos_index]["e"],pos_index,servers_arr,server_index + 1)):
-                        match_dict[pos_index] = results[server_index+1]["ner"][pos_index]
-                        if (pos_index in  results[server_index + 1]["cs_prediction_details"]):
-                            conf_dict[pos_index] = results[server_index + 1]["cs_prediction_details"][pos_index]
-                    else:
-                        match_dict[pos_index] = results[server_index]["ner"][pos_index]
-                        if (pos_index in  results[server_index]["cs_prediction_details"]):
-                            conf_dict[pos_index] = results[server_index]["cs_prediction_details"][pos_index]
-                    found = True
-                    break
-            if (found):
-                break
-        #if (len(match_dict) != 1):
-        #    pdb.set_trace()
-        assert(len(match_dict) == 1)
-        first_key = next(iter(match_dict))
-        assert(first_key not in ensembled)
-        ensembled[first_key]  = match_dict[first_key]
-        if (len(conf_dict) > 0):
-            assert(len(conf_dict) == 1)
-            first_key = next(iter(conf_dict))
-            assert(first_key not in ensembled_conf)
-            ensembled_conf[first_key]  = conf_dict[first_key]
-    return ensembled,ensembled_conf
+        assert(len(servers_arr) == 2) #TBD. Currently assumes two servers in prototype to see if this approach works. To be extended to multiple servers
+        server_index,span_count,cross_prediction_count = get_conflict_resolved_entity(results,term_index,terms_count,servers_arr)
+        for span_index in range(span_count):
+            run_index = str(term_index + 1 + span_index)
+            ensembled_ner[run_index] = gen_resolved_entity(results,server_index,run_index,cross_prediction_count)
+            if (run_index in  results[server_index]["entity_distribution"]):
+                ensembled_conf[run_index] = results[server_index]["entity_distribution"][run_index]
+                ensembled_conf[run_index]["e"] = ensembled_ner[run_index]["e"] #this is to make sure the same tag can be taken from NER result or this structure.
+                                                                               #When both server responses are required, just return the details of first server for now
+                ensembled_ci[run_index] = results[server_index]["ci_prediction_details"][run_index]
+                ensembled_cs[run_index] = results[server_index]["cs_prediction_details"][run_index]
 
+                if (cross_prediction_count == 0 or cross_prediction_count == 2): #This is an ambiguous prediction. Send both server responses
+                    second_server = server_index + 1
+                    ambig_ensembled_conf[run_index] = results[second_server]["entity_distribution"][run_index]
+                    ambig_ensembled_conf[run_index]["e"] = ensembled_ner[run_index]["e"] #this is to make sure the same tag can be taken from NER result or this structure.
+                    ambig_ensembled_ci[run_index] = results[second_server]["ci_prediction_details"][run_index]
+                    ambig_ensembled_cs[run_index] = results[second_server]["cs_prediction_details"][run_index]
+        term_index += span_count
+    return ensembled_ner,ensembled_conf,ensembled_ci,ensembled_cs,ambig_ensembled_conf,ambig_ensembled_ci,ambig_ensembled_cs
 
-def gen_ensembled_sentence(sent,terms_arr,detected_entities_arr,span_arr):
-    #print("Final result")
-    ret_str = ""
-    #for i,term in enumerate(terms_arr):
-    #    print(term[WORD_POS],' ',end='')
-    #print()
-    sent_arr = sent.split()
-    assert(len(terms_arr) == len(span_arr))
-    entity_index = 0
-    i = 0
-    in_span = False
-    while (i < len(span_arr)):
-        if (span_arr[i] == 0):
-            tag = "O"
-            if (in_span):
-                in_span = False
-                entity_index += 1
-        else:
-            if (in_span):
-                tag = "I_" + detected_entities_arr[entity_index]
-            else:
-                in_span = True
-                tag = "B_" + detected_entities_arr[entity_index]
-        ret_str = ret_str + terms_arr[i][WORD_POS] + ' ' + tag + "\n"
-        #print(tag + ' ',end='')
-        i += 1
-    #print()
-    ret_str += "\n"
-    return ret_str
 
 
 def ensemble_processing(sent,results):
-    ensembled_ner,ensembled_conf = get_ensembled_entities(results,actions_arr)
+    ensembled_ner,ensembled_conf,ci_details,cs_details,ambig_ensembled_conf,ambig_ci_details,ambig_cs_details = get_ensembled_entities(results,actions_arr)
     final_ner = OrderedDict()
     final_ner["ensembled_ner"] = ensembled_ner
     final_ner["ensembled_prediction_details"] = ensembled_conf
-    final_ner["individual"] = results
+    final_ner["ci_prediction_details"] = ci_details
+    final_ner["cs_prediction_details"] = cs_details
+    final_ner["ambig_prediction_details_conf"] = ambig_ensembled_conf
+    final_ner["ambig_prediction_details_ci"] = ambig_ci_details
+    final_ner["ambig_prediction_details_cs"] = ambig_cs_details
+    #final_ner["individual"] = results
     return final_ner
 
 
-query_log_fp = None
 
-def fetch_all(inp):
-    global query_log_fp
-    start = time.time()
-    print("Starting threads")
-    servers  = cf.read_config()["NER_SERVERS"]
-    if (len(servers) > 0):
-        assert(len(actions_arr) == len(servers)) #currently just using two servers. TBD. Fix
-        for i in range(len(actions_arr)):
-            actions_arr[i]["url"] = servers[i]
-    threads_arr = create_workers(actions_arr,inp)
-    start_workers(threads_arr)
-    wait_for_completion(threads_arr)
-    print("All threads complete")
-    results = get_results(threads_arr)
-    #print(json.dumps(results,indent=4))
-
-    #this updates results with ensembled results
-    results = ensemble_processing(inp,results)
-    if (query_log_fp is None):
-        query_log_fp = open("query_logs.txt","a")
-    query_log_fp.write(urllib.parse.unquote(inp)+"\n")
-    query_log_fp.flush()
-    end = time.time()
-    results["stats"] = { "Ensemble server count" : str(len(actions_arr)),
-                         "Elapsed time" : str(round(end-start,1)) + " secs"}
-    return results
 
 def tag_interactive():
+    obj = AggregateNER()
     while True:
         print("Enter text with entity for masked position")
         inp = input()
         if (inp == "q" or inp  == "quit"):
             break
-        results = fetch_all(inp)
+        results = obj.fetch_all(inp)
         print(json.dumps(results,indent=4))
 
-def run_test(inp_file):
+def gen_ner_output(results,fp):
+    ner_dict = results["ensembled_ner"]
+    for key in ner_dict:
+        node = ner_dict[key]
+        fp.write(node["term"] + " " + node["e"] + '\n')
+    fp.write("\n")
+    fp.flush()
+
+def batch_mode(inp_file):
+    obj = AggregateNER()
+    count = 1
+    ner_fp = open(NER_OUTPUT_FILE,"w")
     with open(inp_file) as fp:
         for line in fp:
             line = line.rstrip('\n')
-            results = fetch_all(line)
-            print("Input:",line)
-            print(json.dumps(results,indent=4))
-            pdb.set_trace()
+            print(str(count) + "]","Input:",line)
+            results = obj.fetch_all(line)
+            count += 1
+            gen_ner_output(results,ner_fp)
+            #print(json.dumps(results,indent=4))
 
 
 canned_sentences = [
+    "A non-intrusive sleep apnea detection system using a C-Band:__entity__ channel sensing technique is proposed to monitor sleep apnea syndrome in real time.",
+    "Deletion of residues 371–375 from full-length CFTR caused a severe folding defect, resulting in little to no mature form ( C-band:__entity__ ) and eliminating sensitivity to VX-809",
+    "New C band markers of human chromosomes: C band position variants.",
+    "the portfolio manager of the new cryptocurrency firm underwent a bone marrow biopsy for AML:__entity__",
+    "the portfolio manager of the new cryptocurrency firm underwent a bone marrow biopsy New:__entity__ York:__entity__",
+    "I thank my Bari:__entity__ friends and wish everyone a Happy Casimir:__entity__ Pulaski:__entity__  Day:__entity__",
+    "Ajit Rajasekharan is an engineer at nFerence:__entity__",
+    "Ajit Rajasekharan is an engineer at nFerence",
+    "In 2008, Microbix completed the acquisition of all urokinase:__entity__ assets:__entity__ from ImaRx Therapeutics, Inc., making Microbix the only worldwide source of low-molecular-weight urokinase .",
+    "In 2008, Microbix completed the acquisition of all urokinase:__entity__ assets:__entity__ from ImaRx Therapeutics, Inc., making Microbix the only worldwide source of low-molecular-weight urokinase:__entity__ .",
+    "Tonsillitis is a type of:__entity__  pharyngitis that:__entity__  typically comes:__entity__  on fast (rapid onset). Symptoms may include sore throat:__entity__  , fever, enlargement of:__entity__  the tonsils, trouble swallowing, and large lymph nodes around the neck. Complications include peritonsillar abscess",
+    "Parkinson who lives in Cambridge has been diagnosed with Parkinson's",
+    "Ajit:__entity__ Rajasekharan is an engineer",
+    "Ajit:__entity__ Rajasekharan:__entity__ is an engineer",
+    "Mesothelioma is caused by exposure to asbestos:__entity__",
+    "Parkinson:__entity__ who lives in Cambridge:__entity__ has been diagnosed with Parkinson's:__entity__",
+    "Her hypophysitis secondary to ipilimumab:__entity__ was well managed with supplemental hormones",
+    "the portfolio manager of the new cryptocurrency firm underwent a bone marrow biopsy in New:__entity__ York:__entity__",
+    "the portfolio manager of the new cryptocurrency firm underwent a bone marrow biopsy for AML:__entity__",
+    "Her hypophysitis:__entity__ secondary to ipilimumab:__entity__ was well managed with supplemental:__entity__ hormones:__entity__",
+    "ajit:__entity__ rajasekharan:__entity__ is an engineer:__entity__ at nFerence:__entity__",
+    "Imatinib:__entity__ mesylate:__entity__ is a kinase inhibitor used to treat adults and pediatric patients with Philadelphia + chronic myeloid leukemia (Ph+ CML) and other FDA approved indications.",
+    "Imatinib:__entity__ mesylate:__entity__ is a drug and is used to treat nsclc:__entity__",
     "Ajit Rajasekharan is an engineer",
-    "Imatinib mesylate is a drug and is used to treat nsclc",
+    "New C band markers of human chromosomes  C band position variants",
     "engineer",
     "Austin called",
     "Her hypophysitis secondary to ipilimumab was well managed with supplemental hormones",
@@ -291,16 +383,17 @@ canned_sentences = [
 ]
 
 def test_canned_sentences():
+    obj = AggregateNER()
     for line in canned_sentences:
-        results = fetch_all(line)
+        results = obj.fetch_all(line)
         print("Input:",line)
-        print(json.dumps(results,indent=4))
+        #print(json.dumps(results["ensembled_ner"],indent=4))
         pdb.set_trace()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='main NER for a single model ',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-input', action="store", dest="input",default="",help='Input file required for run options batch,single')
-    parser.add_argument('-option', action="store", dest="option",default="canned",help='Valid options are canned,batch,interactive. canned - test few canned sentences used in medium artice. batch - tag sentences in input file. Entities to be tagged are determing used POS tagging to find noun phrases.interactive - input one sentence at a time')
+    parser.add_argument('-input', action="store", dest="input",default=DEFAULT_TEST_BATCH_FILE,help='Input file for batch run option')
+    parser.add_argument('-option', action="store", dest="option",default="batch",help='Valid options are canned,batch,interactive. canned - test few canned sentences used in medium artice. batch - tag sentences in input file. Entities to be tagged are determing used POS tagging to find noun phrases.interactive - input one sentence at a time')
     results = parser.parse_args()
 
     if (results.option == "interactive"):
@@ -309,6 +402,8 @@ if __name__ == '__main__':
         if (len(results.input) == 0):
             print("Input file needs to be specified")
         else:
-            run_test(results.input)
+            print("Running Batch mode")
+            batch_mode(results.input)
     else:
+        print("Running canned test mode")
         test_canned_sentences()

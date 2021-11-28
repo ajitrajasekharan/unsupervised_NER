@@ -27,7 +27,7 @@ Confirm installation works by
  
  Confirm installation works by 
  
-   $ wget -O DES "http://127.0.0.1:8087/dummy/John flew from entity to Rio De Janiro"
+   $ wget -O DES "http://127.0.0.1:8087/dummy/0/John flew from entity to Rio De Janiro"
    
    The output DES file should contain
    
