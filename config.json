@@ -1,5 +1,5 @@
 {"POS_SERVER_URL": "http://127.0.0.1:8073/",
-"DESC_SERVER_URL": "http://127.0.0.1:8087/dummy/",
+"DESC_SERVER_URL": "http://127.0.0.1:8087/dummy/0/",
 "ENTITY_SERVER_URL": "http://127.0.0.1:8043/",
 "EMAP_FILE": "entity_types_consolidated.txt",
 "FULL_SENTENCE_TAG": "1",
