@@ -23,6 +23,10 @@ DEFAULT_ENTITY_MAP = "entity_types_consolidated.txt"
 SPECIFIC_TAG=":__entity__"
 
 
+def softmax(x):
+    """Compute softmax values for each sets of scores in x."""
+    return np.exp(x) / np.sum(np.exp(x), axis=0)
+
 
 #noun_tags = ['NFP','JJ','NN','FW','NNS','NNPS','JJS','JJR','NNP','POS','CD']
 #cap_tags = ['NFP','JJ','NN','FW','NNS','NNPS','JJS','JJR','NNP','PRP']
@@ -65,6 +69,7 @@ class UnsupNER:
         self.entity_map = read_entity_map(cf.read_config()["EMAP_FILE"])
         self.rfp = open("log_results.txt","a")
         self.dfp = open("log_debug.txt","a")
+        self.algo_ci_tag_fp = open("algorthimic_ci_tags.txt","a")
         print(self.pos_server_url)
         print(self.desc_server_url)
         print(self.entity_server_url)
@@ -127,18 +132,40 @@ class UnsupNER:
                 if (terms[1] != "O" and terms[1].startswith("B_")):
                         ref_indices_arr.append(count)
                 count += 1
+            elif (len(terms) == 1):
+                ret_dict[count] = {"term":"empty","e":terms[0]}
+                if (terms[0] != "O" and terms[0].startswith("B_")):
+                        ref_indices_arr.append(count)
+                count += 1
+                if (len(ret_dict) > 3):  #algorithmic harvesting of CI labels for human verification and adding to bootstrap list
+                    self.algo_ci_tag_fp.write("SENT:" + ner_str.replace('\n',' ') + "\n")
+                    out = terms[0].replace('[',' ').replace(']','').split()[-1]
+                    out = '_'.join(out.split('_')[1:]) if out.startswith("B_") else out
+                    print(out)
+                    self.algo_ci_tag_fp.write(ret_dict[count-2]["term"] + " " + out + "\n")
+                    self.algo_ci_tag_fp.flush()
+            else:
+                assert(len(terms) == 0) #If not empty something is not right
         return ret_dict,ref_indices_arr
 
-    def pool_confidences(self,ci_entities,ci_confidences,ci_subtypes,cs_entities,cs_confidences,cs_subtypes,debug_str_arr):
+    def blank_entity_sentence(self,sent):
+        value = True if sent.endswith(" :__entity__\n") else False
+        if (value == True):
+            print("\n\n**************** Skipping CI prediction in pooling for sent:",sent)
+        return value
+
+    def pool_confidences(self,ci_entities,ci_confidences,ci_subtypes,cs_entities,cs_confidences,cs_subtypes,debug_str_arr,sent):
         main_classes = {}
         assert(len(cs_entities) ==  len(cs_confidences))
         assert(len(cs_subtypes) ==  len(cs_entities))
         assert(len(ci_entities) ==  len(ci_confidences))
         assert(len(ci_subtypes) ==  len(ci_entities))
         #Pool entity classes across CI and CS
-        for e,c in zip(ci_entities,ci_confidences):
-            e_base = e.split('[')[0]
-            main_classes[e_base] = float(c)
+        is_blank_statement =  self.blank_entity_sentence(sent)  #Do not pool CI confidences of the sentences of the form " is a entity". These sentences are sent for purely algo harvesting of CS terms. CI predictions will add noise.
+        if (not is_blank_statement):  #Do not pool CI confidences of the sentences of the form " is a entity". These sentences are sent for purely algo harvesting of CS terms. CI predictions will add noise.
+            for e,c in zip(ci_entities,ci_confidences):
+                e_base = e.split('[')[0]
+                main_classes[e_base] = float(c)
         for e,c in zip(cs_entities,cs_confidences):
             e_base = e.split('[')[0]
             if (e_base in main_classes):
@@ -148,8 +175,9 @@ class UnsupNER:
         final_sorted_d = OrderedDict(sorted(main_classes.items(), key=lambda kv: kv[1], reverse=True))
         main_dist = self.convert_positive_nums_to_dist(final_sorted_d)
         main_classes_arr = list(final_sorted_d.keys())
-        print(main_classes_arr)
-        print(main_dist)
+        #print("\nIn pooling confidences")
+        #print(main_classes_arr)
+        #print(main_dist)
         #Pool subtypes across CI and CS for a particular entity class
         subtype_factors = {}
         for e_class in final_sorted_d:
@@ -162,6 +190,8 @@ class UnsupNER:
                         subtype_factors[e_class][st] += stypes[st]
                     else:
                         subtype_factors[e_class][st] = stypes[st]
+            if (is_blank_statement):
+                continue
             if e_class in ci_subtypes:
                 stypes = ci_subtypes[e_class]
                 if (e_class not in subtype_factors):
@@ -181,7 +211,7 @@ class UnsupNER:
         pooled_results = OrderedDict()
         assert(len(main_classes_arr) == len(main_dist))
         d_str_arr = []
-        d_str_arr.append("***CONSOLIDATED ENTITY:")
+        d_str_arr.append("\n***CONSOLIDATED ENTITY:")
         for e,c in zip(main_classes_arr,main_dist):
             pooled_results[e] = {"e":e,"confidence":c}
             d_str_arr.append(e + " " + str(c))
@@ -191,6 +221,7 @@ class UnsupNER:
                 pooled_st[st] = sd
             pooled_results[e]["stypes"] = pooled_st
         debug_str_arr.append(' '.join(d_str_arr))
+        print(' '.join(d_str_arr))
         return pooled_results
 
 
@@ -217,14 +248,18 @@ class UnsupNER:
     #This now does specific tagging if there is a __entity__ in sentence; else does full tagging. TBD.
     #TBD. Make response params same regardlesss of output format. Now it is different
     def tag_sentence(self,sent,rfp,dfp,json_output):
+        print("Input: ", sent)
         dfp.write("\n\n++++-------------------------------\n")
         dfp.write("NER_INPUT: " + sent + "\n")
         debug_str_arr = []
         entity_info_dict = OrderedDict()
         url = self.desc_server_url  + sent.replace('"','\'')
         r = self.dispatch_request(url)
+        if (r is None):
+            print("Empty response. Desc server is probably down: ",self.desc_server_url)
+            return json.loads("[]")
         main_obj = json.loads(r.text)
-        print(json.dumps(main_obj,indent=4))
+        #print(json.dumps(main_obj,indent=4))
         #Find CI predictions for ALL masked predictios in sentence
         ci_predictions = self.find_ci_entities(main_obj,debug_str_arr,entity_info_dict)
         #Find CS predictions for ALL masked predictios in sentence. Use the CI predictions from previous step to
@@ -325,18 +360,15 @@ class UnsupNER:
 
 
     def find_ci_entities(self,main_obj,debug_str_arr,entity_info_dict):
-        term_index = 0
         ci_predictions = []
+        term_index = 1
         batch_obj = main_obj["descs_and_entities"]
         for key in batch_obj:
-            if (term_index == 0): #skipping the main sentence. To be processed in CS extraction
-                term_index += 1
-                continue
-            masked_sent = batch_obj[key]["sentence"]
-            print(masked_sent)
+            masked_sent = batch_obj[key]["ci_prediction"]["sentence"]
+            print("\n**CI: ", masked_sent)
             debug_str_arr.append(masked_sent)
             #entity_info_dict["masked_sent"].append(masked_sent)
-            inp_arr = batch_obj[key]["predictions"]['0']
+            inp_arr = batch_obj[key]["ci_prediction"]["descs"]
             descs = self.get_descriptors_for_masked_position(inp_arr)
             self.init_entity_info(entity_info_dict,term_index)
             entities,confidences,subtypes = self.get_entities_for_masked_position(inp_arr,descs,debug_str_arr,entity_info_dict[term_index]["ci"])
@@ -355,25 +387,25 @@ class UnsupNER:
         term_index = 1
         detected_entities_arr = []
         full_pooled_results = []
-        first_key = next(iter(batch_obj))
-        main_sentence_info_dict  = batch_obj[first_key]["predictions"]
-        for index,key in enumerate(main_sentence_info_dict):
-            position_info = main_sentence_info_dict[key]
+        for index,key in enumerate(batch_obj):
+            position_info = batch_obj[key]["cs_prediction"]["descs"]
             ci_entities = ci_predictions[index]["entities"]
             ci_confidences = ci_predictions[index]["confidences"]
             ci_subtypes = ci_predictions[index]["subtypes"]
-            debug_str_arr.append("\n++++++ Position: " + key)
-            dfp.write(key + "\n")
+            debug_str_arr.append("\n++++++ nth Masked term  : " + key)
+            #dfp.write(key + "\n")
+            masked_sent = batch_obj[key]["cs_prediction"]["sentence"]
+            print("\n**CS: ",masked_sent)
             descs = self.get_descriptors_for_masked_position(position_info)
-            dfp.write(str(descs) + "\n")
+            #dfp.write(str(descs) + "\n")
             if (len(descs) > 0):
                 cs_entities,cs_confidences,cs_subtypes = self.get_entities_for_masked_position(position_info,descs,debug_str_arr,entity_info_dict[term_index]["cs"])
             else:
                 cs_entities = []
                 cs_confidences = []
                 cs_subtypes = []
-            dfp.write(str(cs_entities) + "\n")
-            pooled_results = self.pool_confidences(ci_entities,ci_confidences,ci_subtypes,cs_entities,cs_confidences,cs_subtypes,debug_str_arr)
+            #dfp.write(str(cs_entities) + "\n")
+            pooled_results = self.pool_confidences(ci_entities,ci_confidences,ci_subtypes,cs_entities,cs_confidences,cs_subtypes,debug_str_arr,sent)
             self.fill_detected_entities(detected_entities_arr,pooled_results) #just picks the top prediction
             full_pooled_results.append(pooled_results)
             #self.old_resolve_entities(i,singleton_entities,detected_entities_arr) #This decides how to pick entities given CI and CS predictions
@@ -516,9 +548,20 @@ class UnsupNER:
             total = 1
             factors[0] = 1 #just make the sum 100%. This a boundary case for numbers for instance
         factors = np.array(factors)
+        #factors = softmax(factors)
         factors = factors/total
         factors = np.round(factors,4)
         return factors
+
+    def get_desc_weights_total(self,count,desc_weights):
+        i = 0
+        total = 0
+        while (i < count):
+            total += float(desc_weights[i+1])
+            i += 2
+        total = 1 if total == 0 else total
+        return total
+
 
     def aggregate_entities(self,entities,desc_weights,debug_str_arr,entity_info_dict_entities):
         ''' Given a masked position, whose entity we are trying to determine,
@@ -533,20 +576,23 @@ class UnsupNER:
         i = 0
         subtypes = {}
         while (i < count):
-            curr_counts = entities[i+1].split('/')
-            curr_e = self.map_entities(entities[i].split('/'),curr_counts,subtypes)
-            assert(len(curr_e) <= len(curr_counts)) # can be less if untagges is skipped
-            curr_counts_sum = sum(map(int,curr_counts))
+            #entities[i] contains entity names and entities[i+] contains counts. Example PROTEIN/GENE/PERSON is i and 10/4/7 is i+1
+            curr_counts = entities[i+1].split('/') #this is one of the N predictions - this single prediction is itself  a list of entities
+            trunc_e,trunc_counts = self.map_entities(entities[i].split('/'),curr_counts,subtypes) # Aggregate the subtype entities for this predictions. Subtypes aggregation is **across** the N predictions
+                                                                                    #Also trunc_e contains the consolidated entity names. 
+            assert(len(trunc_e) <= len(curr_counts)) # can be less if untagged is skipped
+            assert(len(trunc_e) == len(trunc_counts))
+            curr_counts_sum = sum(map(int,trunc_counts)) #Using truncated count
             curr_counts_sum = 1 if curr_counts_sum == 0 else curr_counts_sum
-            for j in range(len(curr_e)):
-                if (self.skip_untagged(curr_e[j])):
+            for j in range(len(trunc_e)): #this is iterating through the current instance  of all *consolidated* tagged entity predictons  (that is except UNTAGGED_ENTITY)
+                if (self.skip_untagged(trunc_e[j])):
                     continue
-                if (curr_e[j] not in aggregate_entities):
-                    aggregate_entities[curr_e[j]] = (float(curr_counts[j])/curr_counts_sum)*float(desc_weights[i+1])
-                    #aggregate_entities[curr_e[j]] = float(desc_weights[i+1])
+                if (trunc_e[j] not in aggregate_entities):
+                    aggregate_entities[trunc_e[j]] = (float(trunc_counts[j])/curr_counts_sum)*float(desc_weights[i+1])
+                    #aggregate_entities[trunc_e[j]] = float(desc_weights[i+1])
                 else:
-                    aggregate_entities[curr_e[j]] += (float(curr_counts[j])/curr_counts_sum)*float(desc_weights[i+1])
-                    #aggregate_entities[curr_e[j]] += float(desc_weights[i+1])
+                    aggregate_entities[trunc_e[j]] += (float(trunc_counts[j])/curr_counts_sum)*float(desc_weights[i+1])
+                    #aggregate_entities[trunc_e[j]] += float(desc_weights[i+1])
             i += 2
         final_sorted_d = OrderedDict(sorted(aggregate_entities.items(), key=lambda kv: kv[1], reverse=True))
         if (len(final_sorted_d) == 0): #Case where all terms are tagged OTHER
@@ -600,23 +646,21 @@ class UnsupNER:
 
     def map_entities(self,arr,counts_arr,subtypes_dict):
         ret_arr = []
-        index = 0
-        for i in arr:
-            if (self.skip_untagged(i)):
+        new_counts_arr = []
+        for index,term in enumerate(arr):
+            if (self.skip_untagged(term)):
                 continue
-            ret_arr.append(self.entity_map[i])
-            #if (i != self.entity_map[i]):
-            if (True):
-                if (self.entity_map[i] not in subtypes_dict):
-                    subtypes_dict[self.entity_map[i]] = {}
-                if (i not in subtypes_dict[self.entity_map[i]]):
-                    #subtypes_dict[self.entity_map[i]][i] = int(counts_arr[index])
-                    subtypes_dict[self.entity_map[i]][i] = 1 #just count the number of occurrence of subtypes as opposed to their counts in clusters. This is to avoid cluster context overwhelming the current sentence context. Consider using this as a fractional score of total sense counts once labeling is mature
-                else:
-                    #subtypes_dict[self.entity_map[i]][i] += int(counts_arr[index])
-                    subtypes_dict[self.entity_map[i]][i] += 1
-            index += 1
-        return ret_arr
+            ret_arr.append(self.entity_map[term])
+            new_counts_arr.append(int(counts_arr[index]))
+            if (self.entity_map[term] not in subtypes_dict):
+                subtypes_dict[self.entity_map[term]] = {}
+            if (term not in subtypes_dict[self.entity_map[term]]):
+                #subtypes_dict[self.entity_map[i]][i] = 1
+                subtypes_dict[self.entity_map[term]][term] = int(counts_arr[index])
+            else:
+                #subtypes_dict[self.entity_map[i]][i] += 1
+                subtypes_dict[self.entity_map[term]][term] += int(counts_arr[index])
+        return ret_arr,new_counts_arr
 
     def get_entities_from_batch(self,inp_arr):
         entities_arr = []
@@ -625,16 +669,17 @@ class UnsupNER:
             entities_arr.append(inp_arr[i]["e_count"])
         return entities_arr
 
+
     def get_entities_for_masked_position(self,inp_arr,descs,debug_str_arr,entity_info_dict):
         entities = self.get_entities_from_batch(inp_arr)
-        print(entities)
         debug_combined_arr =[]
         desc_arr =[]
         assert(len(descs) %2 == 0)
         assert(len(entities) %2 == 0)
         index = 0
         for d,e in zip(descs,entities):
-            debug_combined_arr.append(d + " " + e)
+            p_e =  '/'.join(e.split('/')[:5])
+            debug_combined_arr.append(d + " " + p_e)
             if (index % 2 == 0):
                 temp_dict = OrderedDict()
                 temp_dict["d"] = d
@@ -644,7 +689,8 @@ class UnsupNER:
                 temp_dict["l_score"] = e
                 desc_arr.append(temp_dict)
             index += 1
-        debug_str_arr.append(', '.join(debug_combined_arr))
+        debug_str_arr.append("\n" + ', '.join(debug_combined_arr))
+        print(debug_combined_arr)
         entity_info_dict["descs"] = desc_arr
         #debug_str_arr.append(' '.join(entities))
         assert(len(entities) == len(descs))
@@ -737,7 +783,6 @@ def tag_single_entity_in_sentence(file_name,obj):
                 print(str(count) + "] ",line,end='')
                 #entity_arr,span_arr,terms_arr,ner_str,debug_str = obj.tag_sentence(line,rfp,dfp,False) # False for json output
                 json_str = obj.tag_sentence(line,rfp,dfp,True) # True for json output
-                pdb.set_trace()
                 #print("*******************:",terms_arr[span_arr.index(1)][WORD_POS].rstrip(":"),entity_arr[0])
                 #sfp.write(terms_arr[span_arr.index(1)][WORD_POS].rstrip(":") + " " + entity_arr[0] + "\n")
                 count += 1
@@ -749,43 +794,54 @@ def tag_single_entity_in_sentence(file_name,obj):
 
 
 
+test_arr = [
+"Mesothelioma:__entity__ is caused by exposure to asbestos:__entity__",
+"Fyodor:__entity__ Mikhailovich:__entity__ Dostoevsky:__entity__ was treated for Parkinsons",
+"Ajit:__entity__ Rajasekharan:__entity__ is an engineer at nFerence",
+"A eGFR:__entity__ below 60 indicates chronic kidney disease",
+"A eGFR below 60:__entity__ indicates chronic kidney disease",
+"A eGFR:__entity__ below 60:__entity__ indicates chronic:__entity__ kidney:__entity__ disease:__entity__",
+"Ajit:__entity__ rajasekharan is an engineer at nFerence",
+"Ajit:__entity__ rajasekharan is an engineer:__entity__ at nFerence:__entity__",
+"Her hypophysitis secondary to ipilimumab was well managed with supplemental hormones",
+"In Seattle:__entity__ , Pete Incaviglia 's grand slam with one out in the sixth snapped a tie and lifted the Baltimore Orioles past the Seattle           Mariners , 5-2 .",
+"engineer",
+"Austin:__entity__ called",
+"Paul Erdős died at 83",
+"Imatinib mesylate is a drug and is used to treat nsclc",
+"In Seattle , Pete Incaviglia 's grand slam with one out in the sixth snapped a tie and lifted the Baltimore Orioles past the Seattle           Mariners , 5-2 .",
+"It was Incaviglia 's sixth grand slam and 200th homer of his career .",
+"Add Women 's singles , third round Lisa Raymond ( U.S. ) beat Kimberly Po ( U.S. ) 6-3 6-2 .",
+"1880s marked the beginning of Jazz",
+"He flew from New York to SFO",
+"Lionel Ritchie was popular in the 1980s",
+"Lionel Ritchie was popular in the late eighties",
+"John Doe flew from New York to Rio De Janiro via Miami",
+"He felt New York has a chance to win this year's competition",
+"Bandolier - Budgie ' , a free itunes app for ipad , iphone and ipod touch , released in December 2011 , tells the story of the making of Bandolier in the band 's own words - including an extensive audio interview with Burke Shelley",
+"In humans mutations in Foxp2 leads to verbal dyspraxia",
+"The recent spread of Corona virus flu from China to Italy,Iran, South Korea and Japan has caused global concern",
+"Hotel California topped the singles chart",
+"Elon Musk said Telsa will open a manufacturing plant in Europe",
+"He flew from New York to SFO",
+"After studies at Hofstra University , He worked for New York Telephone before He was elected to the New York State Assembly to represent the 16th District in Northwest Nassau County ",
+"Everyday he rode his bicycle from Rajakilpakkam to Tambaram",
+"If he loses Saturday , it could devalue his position as one of the world 's great boxers , \" Panamanian Boxing Association President Ramon     Manzanares said .",
+"West Indian all-rounder Phil Simmons took four for 38 on Friday as Leicestershire beat Somerset by an innings and 39 runs in two days to take over at the head of the county championship .",
+"they are his friends ",
+"they flew from Boston to Rio De Janiro and had a mocha",
+"he flew from Boston to Rio De Janiro and had a mocha",
+"X,Y,Z are medicines"]
 
 
 def test_canned_sentences(obj):
     rfp = open("results.txt","w")
     dfp = open("debug.txt","w")
-    obj.tag_sentence("Ajit:__entity__ rajasekharan is an engineer:__entity__",rfp,dfp,True)
-    obj.tag_sentence("Her hypophysitis secondary to ipilimumab was well managed with supplemental hormones",rfp,dfp,True)
-    obj.tag_sentence("In Seattle:__entity__ , Pete Incaviglia 's grand slam with one out in the sixth snapped a tie and lifted the Baltimore Orioles past the Seattle           Mariners , 5-2 .",rfp,dfp,True)
-    obj.tag_sentence("engineer",rfp,dfp,True)
-    obj.tag_sentence("Austin:__entity__ called",rfp,dfp,True)
-    obj.tag_sentence("Paul Erdős died at 83",rfp,dfp,True)
-    obj.tag_sentence("Imatinib mesylate is a drug and is used to treat nsclc",rfp,dfp,True)
-    obj.tag_sentence("In Seattle , Pete Incaviglia 's grand slam with one out in the sixth snapped a tie and lifted the Baltimore Orioles past the Seattle           Mariners , 5-2 .",rfp,dfp,True)
-    obj.tag_sentence("It was Incaviglia 's sixth grand slam and 200th homer of his career .",rfp,dfp,True)
-    obj.tag_sentence("Add Women 's singles , third round Lisa Raymond ( U.S. ) beat Kimberly Po ( U.S. ) 6-3 6-2 .",rfp,dfp,True)
-    obj.tag_sentence("1880s marked the beginning of Jazz",rfp,dfp,True)
-    obj.tag_sentence("He flew from New York to SFO",rfp,dfp,True)
-    obj.tag_sentence("Lionel Ritchie was popular in the 1980s",rfp,dfp,True)
-    obj.tag_sentence("Lionel Ritchie was popular in the late eighties",rfp,dfp,True)
-    obj.tag_sentence("John Doe flew from New York to Rio De Janiro via Miami",rfp,dfp,True)
-    obj.tag_sentence("He felt New York has a chance to win this year's competition",rfp,dfp,True)
-    obj.tag_sentence("Bandolier - Budgie ' , a free itunes app for ipad , iphone and ipod touch , released in December 2011 , tells the story of the making of Bandolier in the band 's own words - including an extensive audio interview with Burke Shelley",rfp,dfp,True)
-    obj.tag_sentence("Fyodor Mikhailovich Dostoevsky was treated for Parkinsons",rfp,dfp,True)
-    obj.tag_sentence("In humans mutations in Foxp2 leads to verbal dyspraxia",rfp,dfp,True)
-    obj.tag_sentence("The recent spread of Corona virus flu from China to Italy,Iran, South Korea and Japan has caused global concern",rfp,dfp,True)
-    obj.tag_sentence("Hotel California topped the singles chart",rfp,dfp,True)
-    obj.tag_sentence("Elon Musk said Telsa will open a manufacturing plant in Europe",rfp,dfp,True)
-    obj.tag_sentence("He flew from New York to SFO",rfp,dfp,True)
-    obj.tag_sentence("After studies at Hofstra University , He worked for New York Telephone before He was elected to the New York State Assembly to represent the 16th District in Northwest Nassau County ",rfp,dfp,True)
-    obj.tag_sentence("Everyday he rode his bicycle from Rajakilpakkam to Tambaram",rfp,dfp,True)
-    obj.tag_sentence("If he loses Saturday , it could devalue his position as one of the world 's great boxers , \" Panamanian Boxing Association President Ramon     Manzanares said .",rfp,dfp,True)
-    obj.tag_sentence("West Indian all-rounder Phil Simmons took four for 38 on Friday as Leicestershire beat Somerset by an innings and 39 runs in two days to take over at the head of the county championship .",rfp,dfp,True)
-    obj.tag_sentence("they are his friends ",rfp,dfp,True)
-    obj.tag_sentence("they flew from Boston to Rio De Janiro and had a mocha",rfp,dfp,True)
-    obj.tag_sentence("he flew from Boston to Rio De Janiro and had a mocha",rfp,dfp,True)
-    obj.tag_sentence("X,Y,Z are medicines",rfp,dfp,True)
+    for line in test_arr:
+        obj.tag_sentence(line,rfp,dfp,True)
+        pdb.set_trace()
     rfp.close()
+    dfp.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='main NER for a single model ',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
