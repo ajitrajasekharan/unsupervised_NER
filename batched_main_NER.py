@@ -582,16 +582,19 @@ class UnsupNER:
                                                                                     #Also trunc_e contains the consolidated entity names. 
             assert(len(trunc_e) <= len(curr_counts)) # can be less if untagged is skipped
             assert(len(trunc_e) == len(trunc_counts))
+            trunc_counts = softmax(trunc_counts)
             curr_counts_sum = sum(map(int,trunc_counts)) #Using truncated count
             curr_counts_sum = 1 if curr_counts_sum == 0 else curr_counts_sum
             for j in range(len(trunc_e)): #this is iterating through the current instance  of all *consolidated* tagged entity predictons  (that is except UNTAGGED_ENTITY)
                 if (self.skip_untagged(trunc_e[j])):
                     continue
                 if (trunc_e[j] not in aggregate_entities):
-                    aggregate_entities[trunc_e[j]] = (float(trunc_counts[j])/curr_counts_sum)*float(desc_weights[i+1])
+                    aggregate_entities[trunc_e[j]] = (float(trunc_counts[j]))*float(desc_weights[i+1])
+                    #aggregate_entities[trunc_e[j]] = (float(trunc_counts[j])/curr_counts_sum)*float(desc_weights[i+1])
                     #aggregate_entities[trunc_e[j]] = float(desc_weights[i+1])
                 else:
-                    aggregate_entities[trunc_e[j]] += (float(trunc_counts[j])/curr_counts_sum)*float(desc_weights[i+1])
+                    aggregate_entities[trunc_e[j]] += (float(trunc_counts[j]))*float(desc_weights[i+1])
+                    #aggregate_entities[trunc_e[j]] += (float(trunc_counts[j])/curr_counts_sum)*float(desc_weights[i+1])
                     #aggregate_entities[trunc_e[j]] += float(desc_weights[i+1])
             i += 2
         final_sorted_d = OrderedDict(sorted(aggregate_entities.items(), key=lambda kv: kv[1], reverse=True))
@@ -795,6 +798,8 @@ def tag_single_entity_in_sentence(file_name,obj):
 
 
 test_arr = [
+"Ajit rajasekharan is an engineer at nFerence:__entity__",
+"Ajit:__entity__ rajasekharan is an engineer:__entity__ at nFerence:__entity__",
 "Mesothelioma:__entity__ is caused by exposure to asbestos:__entity__",
 "Fyodor:__entity__ Mikhailovich:__entity__ Dostoevsky:__entity__ was treated for Parkinsons",
 "Ajit:__entity__ Rajasekharan:__entity__ is an engineer at nFerence",
@@ -802,7 +807,6 @@ test_arr = [
 "A eGFR below 60:__entity__ indicates chronic kidney disease",
 "A eGFR:__entity__ below 60:__entity__ indicates chronic:__entity__ kidney:__entity__ disease:__entity__",
 "Ajit:__entity__ rajasekharan is an engineer at nFerence",
-"Ajit:__entity__ rajasekharan is an engineer:__entity__ at nFerence:__entity__",
 "Her hypophysitis secondary to ipilimumab was well managed with supplemental hormones",
 "In Seattle:__entity__ , Pete Incaviglia 's grand slam with one out in the sixth snapped a tie and lifted the Baltimore Orioles past the Seattle           Mariners , 5-2 .",
 "engineer",
