@@ -20,7 +20,7 @@ RESULT_MASK = "NER_FINAL_RESULTS:"
 
 DEFAULT_TEST_BATCH_FILE="bootstrap_test_set.txt"
 NER_OUTPUT_FILE="ner_output.txt"
-DEFUALT_THRESHOLD = 1 #1 standard deviation from nean - for cross over prediction
+DEFAULT_THRESHOLD = 1 #1 standard deviation from nean - for cross over prediction
 
 actions_arr = [
         {"url":cf.read_config()["actions_arr"][0]["url"],"desc":cf.read_config()["actions_arr"][0]["desc"], "precedence":cf.read_config()["bio_precedence_arr"],"common":cf.read_config()["common_entities_arr"]},
@@ -29,17 +29,27 @@ actions_arr = [
 
 class AggregateNER:
     def __init__(self):
+        self.error_fp = open("failed_queries_log.txt","a")
         self.rfp = open("query_response_log.txt","a")
         self.query_log_fp = open("query_logs.txt","a")
         self.inferred_entities_log_fp = open("inferred_entities_log.txt","a")
-        self.threshold = DEFUALT_THRESHOLD #TBD read this from confg. cf.read_config()["CROSS_OVER_THRESHOLD_SIGMA"]
+        self.threshold = DEFAULT_THRESHOLD #TBD read this from confg. cf.read_config()["CROSS_OVER_THRESHOLD_SIGMA"]
         self.servers  = cf.read_config()["NER_SERVERS"]
 
+    def add_term_punct(self,sent):
+        if (len(sent) > 1):
+            end_tokens = "!,.:;?"
+            last_char = sent[-1]
+            if (last_char not in end_tokens): #End all sentences with a period if not already present in sentence.
+                sent = sent + ' . '
+                print("End punctuated sent:",sent)
+        return sent
 
     def fetch_all(self,inp):
         start = time.time()
-        self.query_log_fp.write(urllib.parse.unquote(inp)+"\n")
+        self.query_log_fp.write(inp+"\n")
         self.query_log_fp.flush()
+        inp = self.add_term_punct(inp)
         print("Starting threads")
         if (len(self.servers) > 0):
          assert(len(actions_arr) == len(self.servers)) #currently just using two servers. TBD. Fix
@@ -80,32 +90,85 @@ class AggregateNER:
             print("Servers do not agree on prediction for term:",results[0]["ner"][pos_index]["term"],":",s1_entity,s2_entity)
             #Both the servers dont agree on their predictions. First server is BIO server. Second is PHI
             #Examine both server predictions.
-            #Case 1: If one of them cross predicts, dump it.
-                #Return the other prediction (TBD. Assert the cross prediction is indeed part of the other servers above mean prediction?
-                #if not treat again as a tie and return both?).
-                #If both predict anyone of the common enitites "e.g. MEASURE", then treat it is as case 2. Both cross predict
-            #Case 2. If both cross predict, then return both predictions - this is a case both servers have low confidence
-            #Case 3: Both dont cross predict. Then just return both predictions with BIO prediction listed first.
+            #Case 1: If just one of them makes a single prediction, then just pick that - it indicates one model is confident while the other isnt.
+                #Else.
+                # If the top prediction of one of them is a cross prediction, then again drop that prediction and pick the server being cross predicted.
+                # Else. Return both predictions, but with the higher confidence prediction first
+            #Case 2: Both dont cross predict. Then just return both predictions with higher confidence prediction listed first
             #Cross prediction is checked only for  predictions a server makes ABOVE prediction  mean.
-            cross_predictions,cross_prediction_count = self.check_cross_server_prediction(results,term_index,servers_arr)
-            if (cross_prediction_count == 1):
-                ret_server_index = 1 if cross_predictions[0] == True else 0
-            else:
-                ret_server_index = 0
-        return ret_server_index,span_count1,cross_prediction_count
+            picked_server_index,cross_prediction_count = self.pick_single_server_if_possible(results,term_index,servers_arr)
+        return picked_server_index,span_count1,cross_prediction_count
 
-    def check_cross_server_prediction(self,results,term_index,servers_arr):
+    def pick_single_server_if_possible(self,results,term_index,servers_arr):
+        '''
+                Return param : index of picked server
+        '''
         pos_index = str(term_index + 1)
-        cross_predictions = {}
-        cross_prediction_count = 0
+        predictions_dict = {}
+        single_prediction_count = 0
+        single_prediction_server_index = -1
         for server_index in range(len(results)):
             if (pos_index in  results[server_index]["entity_distribution"]):
                  predictions = self.get_predictions_above_threshold(results[server_index]["entity_distribution"][pos_index])
-                 is_included = is_included_in_server_entities(predictions,servers_arr[server_index])
-                 cross_predictions[server_index] = not is_included
-                 cross_prediction_count += 1 if not is_included else 0
-        print("Cross prediction count for term: " + results[0]["ner"][pos_index]["term"] + " is :: " + str(cross_prediction_count))
-        return cross_predictions,cross_prediction_count
+                 predictions_dict[server_index]  = predictions
+                 single_prediction_count += 1 if (len(predictions) == 1) else 0 
+                 if (len(predictions) == 1):
+                    single_prediction_server_index = server_index
+        if (single_prediction_count == 1):
+            is_included = is_included_in_server_entities(predictions_dict[single_prediction_server_index],servers_arr[single_prediction_server_index])
+            if(is_included == False) :
+                print("This is an odd case of single server prediction, that is a cross over")
+                ret_index =  0 if single_prediction_server_index == 1 else 1
+                return ret_index,-1
+            else:
+                print("Returning the index of single prediction server")
+                return single_prediction_server_index,-1
+        elif (single_prediction_count == 2):
+            print("Both have single predictions")
+            cross_predictions = {}
+            cross_prediction_count = 0
+            for server_index in range(len(results)):
+                if (pos_index in  results[server_index]["entity_distribution"]):
+                     is_included = is_included_in_server_entities(predictions_dict[server_index],servers_arr[server_index])
+                     cross_predictions[server_index] = not is_included
+                     cross_prediction_count += 1 if not is_included else 0
+            if (cross_prediction_count == 2):
+                #this is an odd case of both cross predicting with high confidence. Not sure if we will ever come here.
+                print("*********** BOTH servers are cross predicting! ******")
+                return self.pick_top_server_prediction(predictions_dict),2
+            else:
+                print("Returning just the server that is not cross predicting, dumping the cross prediction")
+                ret_index  = 1  if cross_predictions[0] == True else 0 #Given a server cross predicts, return the other server index
+                return ret_index,-1
+        else:
+            print("*** Both servers have multiple predictions above mean")
+            #both have multiple predictions above mean
+            cross_predictions = {}
+            cross_prediction_count = 0
+            for server_index in range(len(results)):
+                if (pos_index in  results[server_index]["entity_distribution"]):
+                     is_included = is_included_in_server_entities(predictions_dict[server_index],servers_arr[server_index])
+                     cross_predictions[server_index] = not is_included
+                     cross_prediction_count += 1 if not is_included else 0
+            if (cross_prediction_count == 2):
+                print("*********** BOTH servers are ALSO cross predicting and have multiple predictions above mean ******")
+                return self.pick_top_server_prediction(predictions_dict),2
+            elif (cross_prediction_count == 0):
+                print("*********** BOTH servers are ALSO predicting within their domain ******")
+                return self.pick_top_server_prediction(predictions_dict),2
+            else:
+                print("Returning just the server that is not cross predicting, dumping the cross prediction")
+                ret_index  = 1  if cross_predictions[0] == True else 0 #Given a server cross predicts, return the other server index
+                return ret_index,-1
+
+
+
+    def pick_top_server_prediction(self,predictions_dict):
+        '''
+        '''        
+        assert(len(predictions_dict) == 2)
+        return 0 if (predictions_dict[0][0]["conf"] >= predictions_dict[1][0]["conf"]) else 1
+
 
     def  get_predictions_above_threshold(self,predictions):
         dist = predictions["cs_distribution"]
@@ -113,15 +176,18 @@ class AggregateNER:
         ret_arr = []
         assert(len(dist) != 0)
         mean_score = 1.0/len(dist) #input is a prob distriubution. so sum is 1
-        sum_deviation = 0
-        for node in dist:
-            sum_deviation += (mean_score - node["confidence"])*(mean_score - node["confidence"])
-        variance = sum_deviation/len(dist)
-        std_dev = math.sqrt(variance)
-        threshold =  mean_score + std_dev*self.threshold #default is 1 standard deviation from mean
+        #sum_deviation = 0
+        #for node in dist:
+        #    sum_deviation += (mean_score - node["confidence"])*(mean_score - node["confidence"])
+        #variance = sum_deviation/len(dist)
+        #std_dev = math.sqrt(variance)
+        #threshold =  mean_score + std_dev*self.threshold #default is 1 standard deviation from mean
+        threshold = mean_score
+        pick_count = 1
         for node in dist:
             if (node["confidence"] > threshold):
-                ret_arr.append(node["e"])
+                ret_arr.append({"e":node["e"],"conf":node["confidence"]})
+                pick_count += 1
             else:
                 break #this is a reverse sorted list. So no need to check anymore
         return ret_arr
@@ -133,15 +199,33 @@ class AggregateNER:
         else:
             ret_obj = results[server_index]["ner"][run_index].copy()
             #ret_obj["e"] = results[0]["ner"][run_index]["e"] + "/" + results[1]["ner"][run_index]["e"]
-            n1 = flip_category(results[0]["ner"][run_index])
-            n2 = flip_category(results[1]["ner"][run_index])
+            index2 = 1 if  server_index == 0 else 0
+            n1 = flip_category(results[server_index]["ner"][run_index])
+            n2 = flip_category(results[index2]["ner"][run_index])
             ret_obj["e"] = n1["e"] + "/" + n2["e"]
             return ret_obj
 
 
+    def confirm_same_size_responses(self,sent,results):
+     count = 0
+     for i in range(len(results)):
+         if ("ner" in results[i]):
+             ner = results[i]["ner"]
+         else:
+             print("Server",i," returned invalid response;",results[i])
+             self.error_fp.write("Server " + str(i) + " failed for query: " + sent + "\n")
+             self.error_fp.flush()
+             return 0
+         if(count == 0):
+             assert(len(ner) > 0)
+             count = len(ner)
+         else:
+             if (count != len(ner)):
+                 assert(0)
+     return count
 
 
-    def get_ensembled_entities(self,results,servers_arr):
+    def get_ensembled_entities(self,sent,results,servers_arr):
         ensembled_ner = OrderedDict()
         ensembled_conf =  OrderedDict()
         ambig_ensembled_conf =  OrderedDict()
@@ -150,7 +234,7 @@ class AggregateNER:
         ambig_ensembled_ci = OrderedDict()
         ambig_ensembled_cs = OrderedDict()
         print("Ensemble candidates")
-        terms_count =  confirm_same_size_responses(results)
+        terms_count =  self.confirm_same_size_responses(sent,results)
         if (terms_count == 0):
             return ensembled_ner,ensembled_conf,ensembled_ci,ensembled_cs,ambig_ensembled_conf,ambig_ensembled_ci,ambig_ensembled_cs
         assert(len(servers_arr) == len(results))
@@ -170,7 +254,7 @@ class AggregateNER:
                     ensembled_cs[run_index] = results[server_index]["cs_prediction_details"][run_index]
 
                     if (cross_prediction_count == 0 or cross_prediction_count == 2): #This is an ambiguous prediction. Send both server responses
-                        second_server = server_index + 1
+                        second_server = 1 if server_index == 0 else 1
                         ambig_ensembled_conf[run_index] = results[second_server]["entity_distribution"][run_index]
                         ambig_ensembled_conf[run_index]["e"] = ensembled_ner[run_index]["e"] #this is to make sure the same tag can be taken from NER result or this structure.
                         ambig_ensembled_ci[run_index] = results[second_server]["ci_prediction_details"][run_index]
@@ -184,7 +268,7 @@ class AggregateNER:
 
 
     def ensemble_processing(self,sent,results):
-        ensembled_ner,ensembled_conf,ci_details,cs_details,ambig_ensembled_conf,ambig_ci_details,ambig_cs_details = self.get_ensembled_entities(results,actions_arr)
+        ensembled_ner,ensembled_conf,ci_details,cs_details,ambig_ensembled_conf,ambig_ci_details,ambig_cs_details = self.get_ensembled_entities(sent,results,actions_arr)
         final_ner = OrderedDict()
         final_ner["ensembled_ner"] = ensembled_ner
         final_ner["ensembled_prediction_details"] = ensembled_conf
@@ -209,7 +293,11 @@ class myThread (threading.Thread):
    def run(self):
       print ("Starting " + self.url + self.param)
       out = requests.get(self.url + self.param)
-      self.results = json.loads(out.text,object_pairs_hook=OrderedDict)
+      try:
+          self.results = json.loads(out.text,object_pairs_hook=OrderedDict)
+      except:
+            print("Empty response from server for input:",self.param)
+            self.results =  json.loads("{}",object_pairs_hook=OrderedDict)
       self.results["server"] = self.desc
       print ("Exiting " + self.url + self.param)
 
@@ -237,21 +325,6 @@ def get_results(threads_arr):
     return results
 
 
-def confirm_same_size_responses(results):
-    count = 0
-    for i in range(len(results)):
-        if ("ner" in results[i]):
-            ner = results[i]["ner"]
-        else:
-            print("Server",i," returned invalid response;",results[i])
-            return 0
-        if(count == 0):
-            assert(len(ner) > 0)
-            count = len(ner)
-        else:
-            if (count != len(ner)):
-                assert(0)
-    return count
 
 def prefix_strip(term):
     if (term.startswith("B_") or term.startswith("I_")):
@@ -298,8 +371,9 @@ def get_span_info(results,server_index,term_index,terms_count):
 
 def  is_included_in_server_entities(predictions,s_arr):
     for entity in predictions:
-        if ((entity not in s_arr["precedence"]) and (entity not in s_arr["common"])): #treat the presence of an entity in common as a cross over
+        if ((entity["e"] not in s_arr["precedence"]) and (entity["e"] not in s_arr["common"])): #do not treat the presence of an entity in common as a cross over
             return False
+        return True #Just check the top prediction for inclusion in the new semantics
     return True
 
 
@@ -315,6 +389,7 @@ def tag_interactive():
         print(json.dumps(results,indent=4))
 
 def gen_ner_output(results,fp):
+    print()
     ner_dict = results["ensembled_ner"]
     for key in ner_dict:
         node = ner_dict[key]
@@ -335,11 +410,27 @@ def batch_mode(inp_file):
             count += 1
             gen_ner_output(results,ner_fp)
             #print(json.dumps(results,indent=4))
-            #pdb.set_trace()
+            pdb.set_trace()
 
 
 canned_sentences = [
+    "Input: Coronavirus disease 2019 (COVID-19) is a contagious disease caused by severe acute respiratory syndrome coronavirus 2 (SARS-CoV-2). The first known case was identified in Wuhan, China, in December 2019.[7] The disease has since spread worldwide, leading to an ongoing pandemic.[8]Symptoms of COVID-19 are variable, but often include fever,[9] cough, headache,[10] fatigue, breathing difficulties, and loss of smell and taste.[11][12][13] Symptoms may begin one to fourteen days after exposure to the virus. At least a third of people who are infected do not develop noticeable symptoms.[14] Of those people who develop symptoms noticeable enough to be classed as patients, most (81%) develop mild to moderate symptoms (up to mild pneumonia), while 14% develop severe symptoms (dyspnea, hypoxia, or more than 50% lung involvement on imaging), and 5% suffer critical symptoms (respiratory failure, shock, or multiorgan dysfunction).[15] Older people are at a higher risk of developing severe symptoms. Some people continue to experience a range of effects (long COVID) for months after recovery, and damage to organs has been observed.[16] Multi-year studies are underway to further investigate the long-term effects of the disease.[16]COVID-19 transmits when people breathe in air contaminated by droplets and small airborne particles containing the virus. The risk of breathing these in is highest when people are in close proximity, but they can be inhaled over longer distances, particularly indoors. Transmission can also occur if splashed or sprayed with contaminated fluids in the eyes, nose or mouth, and, rarely, via contaminated surfaces. People remain contagious for up to 20 days, and can spread the virus even if they do not develop symptoms.[17][18]Several testing methods have been developed to diagnose the disease. The standard diagnostic method is by detection of the virus' nucleic acid by real-time reverse transcription polymerase chain reaction (rRT-PCR), transcription-mediated amplification (TMA), or by reverse transcription loop-mediated isothermal amplification (RT-LAMP) from a nasopharyngeal swab.Several COVID-19 vaccines have been approved and distributed in various countries, which have initiated mass vaccination campaigns. Other preventive measures include physical or social distancing, quarantining, ventilation of indoor spaces, covering coughs and sneezes, hand washing, and keeping unwashed hands away from the face. The use of face masks or coverings has been recommended in public settings to minimize the risk of transmissions. While work is underway to develop drugs that inhibit the virus, the primary treatment is symptomatic. Management involves the treatment of symptoms, supportive care, isolation, and experimental measures.",
+    "eg",
+    "ajit rajasekharan is an engineer at nFerence:__entity__",
+    "Imatinib meslyate is used to trear nsclc:__entity__",
+    "Imatinib:__entity__ meslyate:__entity__ is used to trear nsclc",
+    "imatinib was used to treat Michael:__entity__ Jackson:__entity__",
+    "This strong enrichment in ruthenium reaches an apogee at the center of the massive:__entity__ sulphide:__entity__ zone:__entity__ ",
+    "Ajit is an engineer:__entity__",
+    "the most common cause of pulmonary hypertension is left heart disease. Other:__entity__ conditions:__entity__ that can cause pulmonary hypertension include sickle cell disease; pulmonary embolus, which is a type of venous thromboembolism; and chronic obstructive pulmonary disease",
+    "The coronavirus disease  ( COVID-19:__entity__ ) is caused by a virus NOT by bacteria",
+    "The coronavirus disease  (COVID-19:__entity__ ) is caused by a virus NOT by bacteria",
+    "ajit rajasekharan is an engineer at nFerence",
+    "The portfolio manager of the new cryptocurrency firm underwent a bone marrow biopsy for AML:__entity__",
+    "Mesothelioma is caused by exposure to asbestos:__entity__",
     "Ajit Rajasekharan is an engineer at nFerence",
+    "Omicron:__entity__ live updates: Variant detected in Houston's wastewater",
+    "Omicron live updates: Variant detected in Houston's wastewater",
     "Bio-Techne's genomic tools include advanced tissue-based in-situ hybridization assays (ISH) for research and clinical use, sold under the ACD:__entity__ brand as well as a portfolio of clinical molecular diagnostic oncology assays, including the IntelliScore test (EPI) for prostate cancer diagnosis",
     "I admire my Bari:__entity__ roommates and wish everyone a Happy Casimir:__entity__ Pulaski:__entity__  Day:__entity__",
     "Currently, there are no approved:__entity__ therapies available for CML:__entity__ patients who fail dasatinib:__entity__ or nilotinib:__entity__ in second line",
@@ -406,7 +497,7 @@ def test_canned_sentences():
         results = obj.fetch_all(line)
         print("Input:",line)
         print(json.dumps(results["ensembled_ner"],indent=4))
-        pdb.set_trace()
+        #pdb.set_trace()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='main NER for a single model ',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
