@@ -386,7 +386,7 @@ class UnsupNER:
         orig_cs_arr = []
         for e,c in zip(cs_entities,cs_confidences):
             print(e,c)
-            orig_cs_arr.append({"e":e.split('[')[0],"confidence":c})
+            orig_cs_arr.append({"e":e,"confidence":c})
         return orig_cs_arr
 
 
