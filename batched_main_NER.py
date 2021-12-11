@@ -291,7 +291,7 @@ class UnsupNER:
                 cs_aux_dict[ref_indices_arr[count]] = {"e":e,"cs_descs":val["cs"]["descs"]}
                 #ci_aux_dict[ref_indices_arr[count]] = {"ci_distribution":val["ci"]["entities"],"ci_descs":val["ci"]["descs"]}
                 ci_aux_dict[ref_indices_arr[count]] = {"ci_descs":val["ci"]["descs"]}
-                cs_aux_orig_entities[ref_indices_arr[count]] = {"e":e,"orig_cs_distribution": o}
+                cs_aux_orig_entities[ref_indices_arr[count]] = {"e":e,"cs_distribution": o}
                 count += 1
             #print(ret_dict)
             #print(aux_dict)
@@ -386,7 +386,7 @@ class UnsupNER:
         orig_cs_arr = []
         for e,c in zip(cs_entities,cs_confidences):
             print(e,c)
-            orig_cs_arr.append({"e":e.split('[')[0],"c":c})
+            orig_cs_arr.append({"e":e.split('[')[0],"confidence":c})
         return orig_cs_arr
 
 
