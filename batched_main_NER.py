@@ -386,6 +386,16 @@ class UnsupNER:
         orig_cs_arr = []
         for e,c in zip(cs_entities,cs_confidences):
             print(e,c)
+            e_split = e.split('[')
+            e_main = e_split[0]
+            if (len(e_split) > 1):
+                e_sub = e_split[1].split(',')[0].rstrip(']')
+                if (e_main != e_sub):
+                    e = e_main + '[' + e_sub + ']'
+                else:
+                    e = e_main
+            else:
+                e = e_main
             orig_cs_arr.append({"e":e,"confidence":c})
         return orig_cs_arr
 
