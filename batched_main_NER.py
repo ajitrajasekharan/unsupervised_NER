@@ -262,7 +262,7 @@ class UnsupNER:
         main_obj = json.loads(r.text)
         #print(json.dumps(main_obj,indent=4))
         #Find CI predictions for ALL masked predictios in sentence
-        ci_predictions = self.find_ci_entities(main_obj,debug_str_arr,entity_info_dict)
+        ci_predictions,orig_ci_entities = self.find_ci_entities(main_obj,debug_str_arr,entity_info_dict) #ci_entities is the same info as ci_predictions except packed differently for output
         #Find CS predictions for ALL masked predictios in sentence. Use the CI predictions from previous step to
         #pool
         detected_entities_arr,ner_str,full_pooled_results,orig_cs_entities = self.find_cs_entities(sent,main_obj,rfp,dfp,debug_str_arr,ci_predictions,entity_info_dict)
@@ -280,11 +280,13 @@ class UnsupNER:
             cs_aux_dict = OrderedDict()
             ci_aux_dict = OrderedDict()
             cs_aux_orig_entities = OrderedDict()
+            ci_aux_orig_entities = OrderedDict()
             pooled_pred_dict = OrderedDict()
             count = 0
             assert(len(full_pooled_results) == len(detected_entities_arr))
             assert(len(full_pooled_results) == len(orig_cs_entities))
-            for e,c,p,o in zip(detected_entities_arr,entity_info_dict,full_pooled_results,orig_cs_entities):
+            assert(len(full_pooled_results) == len(orig_ci_entities))
+            for e,c,p,o,i in zip(detected_entities_arr,entity_info_dict,full_pooled_results,orig_cs_entities,orig_ci_entities):
                 val = entity_info_dict[c]
                 #cs_aux_dict[ref_indices_arr[count]] = {"e":e,"cs_distribution":val["cs"]["entities"],"cs_descs":val["cs"]["descs"]}
                 pooled_pred_dict[ref_indices_arr[count]] = {"e": e, "cs_distribution": list(p.values())}
@@ -292,10 +294,11 @@ class UnsupNER:
                 #ci_aux_dict[ref_indices_arr[count]] = {"ci_distribution":val["ci"]["entities"],"ci_descs":val["ci"]["descs"]}
                 ci_aux_dict[ref_indices_arr[count]] = {"ci_descs":val["ci"]["descs"]}
                 cs_aux_orig_entities[ref_indices_arr[count]] = {"e":e,"cs_distribution": o}
+                ci_aux_orig_entities[ref_indices_arr[count]] = {"e":e,"cs_distribution": i}
                 count += 1
             #print(ret_dict)
             #print(aux_dict)
-            final_ret_dict = {"total_terms_count":len(ret_dict),"detected_entity_phrases_count":len(detected_entities_arr),"ner":ret_dict,"entity_distribution":pooled_pred_dict,"cs_prediction_details":cs_aux_dict,"ci_prediction_details":ci_aux_dict,"orig_cs_prediction_details":cs_aux_orig_entities,"debug":debug_str_arr}
+            final_ret_dict = {"total_terms_count":len(ret_dict),"detected_entity_phrases_count":len(detected_entities_arr),"ner":ret_dict,"entity_distribution":pooled_pred_dict,"cs_prediction_details":cs_aux_dict,"ci_prediction_details":ci_aux_dict,"orig_cs_prediction_details":cs_aux_orig_entities,"orig_ci_prediction_details":ci_aux_orig_entities,"debug":debug_str_arr}
             json_str = json.dumps(final_ret_dict,indent = 4)
             #print (json_str)
             #with open("single_debug.txt","w") as fp:
@@ -365,6 +368,7 @@ class UnsupNER:
 
     def find_ci_entities(self,main_obj,debug_str_arr,entity_info_dict):
         ci_predictions = []
+        orig_ci_confidences = []
         term_index = 1
         batch_obj = main_obj["descs_and_entities"]
         for key in batch_obj:
@@ -377,8 +381,9 @@ class UnsupNER:
             self.init_entity_info(entity_info_dict,term_index)
             entities,confidences,subtypes = self.get_entities_for_masked_position(inp_arr,descs,debug_str_arr,entity_info_dict[term_index]["ci"])
             ci_predictions.append({"entities":entities,"confidences":confidences,"subtypes":subtypes})
+            orig_ci_confidences.append(self.pack_confidences(entities,confidences))             #this is sent for ensemble server to detect cross predictions. CS predicitons are more reflective of cross over than consolidated predictions, since CI may overwhelm CS
             term_index += 1
-        return ci_predictions
+        return ci_predictions,orig_ci_confidences
 
 
     def pack_confidences(self,cs_entities,cs_confidences):
@@ -823,6 +828,7 @@ def tag_single_entity_in_sentence(file_name,obj):
 
 
 test_arr = [
+"He felt New:__entity__ York:__entity__ has a chance to win this year's competition",
 "Ajit rajasekharan is an engineer at nFerence:__entity__",
 "Ajit:__entity__ rajasekharan is an engineer:__entity__ at nFerence:__entity__",
 "Mesothelioma:__entity__ is caused by exposure to asbestos:__entity__",
