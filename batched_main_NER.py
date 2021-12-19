@@ -148,20 +148,21 @@ class UnsupNER:
                 assert(len(terms) == 0) #If not empty something is not right
         return ret_dict,ref_indices_arr
 
-    def blank_entity_sentence(self,sent):
+    def blank_entity_sentence(self,sent,dfp):
         value = True if sent.endswith(" :__entity__\n") else False
         if (value == True):
             print("\n\n**************** Skipping CI prediction in pooling for sent:",sent)
+            dfp.write("\n\n**************** Skipping CI prediction in pooling for sent:" + sent + "\n")
         return value
 
-    def pool_confidences(self,ci_entities,ci_confidences,ci_subtypes,cs_entities,cs_confidences,cs_subtypes,debug_str_arr,sent):
+    def pool_confidences(self,ci_entities,ci_confidences,ci_subtypes,cs_entities,cs_confidences,cs_subtypes,debug_str_arr,sent,dfp):
         main_classes = {}
         assert(len(cs_entities) ==  len(cs_confidences))
         assert(len(cs_subtypes) ==  len(cs_entities))
         assert(len(ci_entities) ==  len(ci_confidences))
         assert(len(ci_subtypes) ==  len(ci_entities))
         #Pool entity classes across CI and CS
-        is_blank_statement =  self.blank_entity_sentence(sent)  #Do not pool CI confidences of the sentences of the form " is a entity". These sentences are sent for purely algo harvesting of CS terms. CI predictions will add noise.
+        is_blank_statement =  self.blank_entity_sentence(sent,dfp)  #Do not pool CI confidences of the sentences of the form " is a entity". These sentences are sent for purely algo harvesting of CS terms. CI predictions will add noise.
         if (not is_blank_statement):  #Do not pool CI confidences of the sentences of the form " is a entity". These sentences are sent for purely algo harvesting of CS terms. CI predictions will add noise.
             for e,c in zip(ci_entities,ci_confidences):
                 e_base = e.split('[')[0]
@@ -261,10 +262,10 @@ class UnsupNER:
         main_obj = json.loads(r.text)
         #print(json.dumps(main_obj,indent=4))
         #Find CI predictions for ALL masked predictios in sentence
-        ci_predictions = self.find_ci_entities(main_obj,debug_str_arr,entity_info_dict)
+        ci_predictions,orig_ci_entities = self.find_ci_entities(main_obj,debug_str_arr,entity_info_dict) #ci_entities is the same info as ci_predictions except packed differently for output
         #Find CS predictions for ALL masked predictios in sentence. Use the CI predictions from previous step to
         #pool
-        detected_entities_arr,ner_str,full_pooled_results = self.find_cs_entities(sent,main_obj,rfp,dfp,debug_str_arr,ci_predictions,entity_info_dict)
+        detected_entities_arr,ner_str,full_pooled_results,orig_cs_entities = self.find_cs_entities(sent,main_obj,rfp,dfp,debug_str_arr,ci_predictions,entity_info_dict)
         assert(len(detected_entities_arr) == len(entity_info_dict))
         print("--------")
         if (json_output):
@@ -278,20 +279,26 @@ class UnsupNER:
             assert(len(entity_info_dict)  == len(detected_entities_arr))
             cs_aux_dict = OrderedDict()
             ci_aux_dict = OrderedDict()
+            cs_aux_orig_entities = OrderedDict()
+            ci_aux_orig_entities = OrderedDict()
             pooled_pred_dict = OrderedDict()
             count = 0
             assert(len(full_pooled_results) == len(detected_entities_arr))
-            for e,c,p in zip(detected_entities_arr,entity_info_dict,full_pooled_results):
+            assert(len(full_pooled_results) == len(orig_cs_entities))
+            assert(len(full_pooled_results) == len(orig_ci_entities))
+            for e,c,p,o,i in zip(detected_entities_arr,entity_info_dict,full_pooled_results,orig_cs_entities,orig_ci_entities):
                 val = entity_info_dict[c]
                 #cs_aux_dict[ref_indices_arr[count]] = {"e":e,"cs_distribution":val["cs"]["entities"],"cs_descs":val["cs"]["descs"]}
                 pooled_pred_dict[ref_indices_arr[count]] = {"e": e, "cs_distribution": list(p.values())}
                 cs_aux_dict[ref_indices_arr[count]] = {"e":e,"cs_descs":val["cs"]["descs"]}
                 #ci_aux_dict[ref_indices_arr[count]] = {"ci_distribution":val["ci"]["entities"],"ci_descs":val["ci"]["descs"]}
                 ci_aux_dict[ref_indices_arr[count]] = {"ci_descs":val["ci"]["descs"]}
+                cs_aux_orig_entities[ref_indices_arr[count]] = {"e":e,"cs_distribution": o}
+                ci_aux_orig_entities[ref_indices_arr[count]] = {"e":e,"cs_distribution": i}
                 count += 1
             #print(ret_dict)
             #print(aux_dict)
-            final_ret_dict = {"total_terms_count":len(ret_dict),"detected_entity_phrases_count":len(detected_entities_arr),"ner":ret_dict,"entity_distribution":pooled_pred_dict,"cs_prediction_details":cs_aux_dict,"ci_prediction_details":ci_aux_dict,"debug":debug_str_arr}
+            final_ret_dict = {"total_terms_count":len(ret_dict),"detected_entity_phrases_count":len(detected_entities_arr),"ner":ret_dict,"entity_distribution":pooled_pred_dict,"cs_prediction_details":cs_aux_dict,"ci_prediction_details":ci_aux_dict,"orig_cs_prediction_details":cs_aux_orig_entities,"orig_ci_prediction_details":ci_aux_orig_entities,"debug":debug_str_arr}
             json_str = json.dumps(final_ret_dict,indent = 4)
             #print (json_str)
             #with open("single_debug.txt","w") as fp:
@@ -361,6 +368,7 @@ class UnsupNER:
 
     def find_ci_entities(self,main_obj,debug_str_arr,entity_info_dict):
         ci_predictions = []
+        orig_ci_confidences = []
         term_index = 1
         batch_obj = main_obj["descs_and_entities"]
         for key in batch_obj:
@@ -373,9 +381,28 @@ class UnsupNER:
             self.init_entity_info(entity_info_dict,term_index)
             entities,confidences,subtypes = self.get_entities_for_masked_position(inp_arr,descs,debug_str_arr,entity_info_dict[term_index]["ci"])
             ci_predictions.append({"entities":entities,"confidences":confidences,"subtypes":subtypes})
+            orig_ci_confidences.append(self.pack_confidences(entities,confidences))             #this is sent for ensemble server to detect cross predictions. CS predicitons are more reflective of cross over than consolidated predictions, since CI may overwhelm CS
             term_index += 1
-        return ci_predictions
+        return ci_predictions,orig_ci_confidences
 
+
+    def pack_confidences(self,cs_entities,cs_confidences):
+        assert(len(cs_entities) == len(cs_confidences))
+        orig_cs_arr = []
+        for e,c in zip(cs_entities,cs_confidences):
+            print(e,c)
+            e_split = e.split('[')
+            e_main = e_split[0]
+            if (len(e_split) > 1):
+                e_sub = e_split[1].split(',')[0].rstrip(']')
+                if (e_main != e_sub):
+                    e = e_main + '[' + e_sub + ']'
+                else:
+                    e = e_main
+            else:
+                e = e_main
+            orig_cs_arr.append({"e":e,"confidence":c})
+        return orig_cs_arr
 
 
     #We have multiple masked versions of a single sentence. Tag each one of them
@@ -387,6 +414,7 @@ class UnsupNER:
         term_index = 1
         detected_entities_arr = []
         full_pooled_results = []
+        orig_cs_confidences = []
         for index,key in enumerate(batch_obj):
             position_info = batch_obj[key]["cs_prediction"]["descs"]
             ci_entities = ci_predictions[index]["entities"]
@@ -405,9 +433,10 @@ class UnsupNER:
                 cs_confidences = []
                 cs_subtypes = []
             #dfp.write(str(cs_entities) + "\n")
-            pooled_results = self.pool_confidences(ci_entities,ci_confidences,ci_subtypes,cs_entities,cs_confidences,cs_subtypes,debug_str_arr,sent)
+            pooled_results = self.pool_confidences(ci_entities,ci_confidences,ci_subtypes,cs_entities,cs_confidences,cs_subtypes,debug_str_arr,sent,dfp)
             self.fill_detected_entities(detected_entities_arr,pooled_results) #just picks the top prediction
             full_pooled_results.append(pooled_results)
+            orig_cs_confidences.append(self.pack_confidences(cs_entities,cs_confidences))             #this is sent for ensemble server to detect cross predictions. CS predicitons are more reflective of cross over than consolidated predictions, since CI may overwhelm CS
             #self.old_resolve_entities(i,singleton_entities,detected_entities_arr) #This decides how to pick entities given CI and CS predictions
             term_index += 1
         #out of the full loop over sentences. Now create NER sentence
@@ -415,7 +444,7 @@ class UnsupNER:
         span_arr = main_obj["span_arr"]
         ner_str = self.emit_sentence_entities(sent,terms_arr,detected_entities_arr,span_arr,rfp) #just outputs results in NER Conll format
         dfp.flush()
-        return detected_entities_arr,ner_str,full_pooled_results
+        return detected_entities_arr,ner_str,full_pooled_results,orig_cs_confidences
 
 
     def fill_detected_entities(self,detected_entities_arr,entities):
@@ -790,6 +819,7 @@ def tag_single_entity_in_sentence(file_name,obj):
                 #sfp.write(terms_arr[span_arr.index(1)][WORD_POS].rstrip(":") + " " + entity_arr[0] + "\n")
                 count += 1
                 sfp.flush()
+                #pdb.set_trace()
     rfp.close()
     sfp.close()
     dfp.close()
@@ -798,6 +828,7 @@ def tag_single_entity_in_sentence(file_name,obj):
 
 
 test_arr = [
+"He felt New:__entity__ York:__entity__ has a chance to win this year's competition",
 "Ajit rajasekharan is an engineer at nFerence:__entity__",
 "Ajit:__entity__ rajasekharan is an engineer:__entity__ at nFerence:__entity__",
 "Mesothelioma:__entity__ is caused by exposure to asbestos:__entity__",
@@ -842,7 +873,7 @@ def test_canned_sentences(obj):
     rfp = open("results.txt","w")
     dfp = open("debug.txt","w")
     for line in test_arr:
-        obj.tag_sentence(line,rfp,dfp,True)
+        obj = obj.tag_sentence(line,rfp,dfp,True)
         pdb.set_trace()
     rfp.close()
     dfp.close()
