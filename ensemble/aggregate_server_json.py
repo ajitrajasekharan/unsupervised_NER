@@ -263,6 +263,7 @@ class AggregateNER:
                             orig_cs_second_entity = results[server_index]["orig_cs_prediction_details"][pivot_index]['cs_distribution'][1]
                             m2_cs = orig_cs_second_entity["e"].split('[')[0]
                             is_cs_included = True if (m2_cs in servers_arr[server_index]["precedence"]) else False
+                            is_cs_included = True #Disabling cs included check. If prediction above threshold is cross prediction, then letting it through
                             assert (m2_cs != m1)
                             if (is_cs_included and self.check_if_entity_in_arr(m2_cs,ret_arr)):
                                 ret_obj = results[server_index]["ner"][run_index].copy()
@@ -282,6 +283,7 @@ class AggregateNER:
                             orig_cs_second_entity = results[server_index]["orig_cs_prediction_details"][pivot_index]['cs_distribution'][1]
                             m2_cs = orig_cs_second_entity["e"].split('[')[0]
                             is_cs_included = True if (m2_cs in servers_arr[server_index]["precedence"]) else False
+                            is_cs_included = True #Disabling cs included check. If prediction above threshold is cross prediction, then letting it through
                             assert (m2_cs != m1)
                             if (is_cs_included and self.check_if_entity_in_arr(m2_cs,ret_arr)):
                                 ret_obj = results[server_index]["ner"][run_index].copy()
@@ -548,6 +550,8 @@ def batch_mode(inp_file):
 
 
 canned_sentences = [
+    "imatinib was used to treat Michael:__entity__ Jackson:__entity__",
+    "Mesothelioma is caused by exposure to asbestos:__entity__",
     "It was Incaviglia 's sixth grand slam and 200th homer of his career .",
     "Add Women 's singles , third round Lisa Raymond ( U.S. , beat Kimberly Po ( U.S. , 6-3 6-2 .",
     "1880s marked the beginning of Jazz",
@@ -569,7 +573,6 @@ canned_sentences = [
     "he flew from Boston to Rio De Janiro and had a mocha",
     "X,Y,Z are medicines",
     "The portfolio manager of the new cryptocurrency firm underwent a bone marrow biopsy: for AML:__entity__",
-    "The portfolio manager of the new cryptocurrency firm underwent a bone marrow biopsy: for AML:__entity__:",
     "The new omicron variant could increase the likelihood that people will need a fourth coronavirus  vaccine dose earlier than expected, executives at pharmaceutical giant Pfizer  said Wednesday",
     "He flew from New York to SFO",
     "He felt New York has a chance:__entity__ to win this year's competition",
@@ -620,7 +623,6 @@ canned_sentences = [
     "The coronavirus disease  (COVID-19:__entity__ ) is caused by a virus NOT by bacteria",
     "ajit rajasekharan is an engineer at nFerence",
     "The portfolio manager of the new cryptocurrency firm underwent a bone marrow biopsy for AML:__entity__",
-    "Mesothelioma is caused by exposure to asbestos:__entity__",
     "Omicron:__entity__ live updates: Variant detected in Houston's wastewater",
     "Omicron live updates: Variant detected in Houston's wastewater",
     "Bio-Techne's genomic tools include advanced tissue-based in-situ hybridization assays (ISH) for research and clinical use, sold under the ACD:__entity__ brand as well as a portfolio of clinical molecular diagnostic oncology assays, including the IntelliScore test (EPI) for prostate cancer diagnosis",
