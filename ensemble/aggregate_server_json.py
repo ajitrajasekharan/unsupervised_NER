@@ -5,7 +5,7 @@ import math
 import sys
 import pdb
 import requests
-import urllib
+import urllib.parse
 from utils.common import *
 import config_utils as cf
 import json
@@ -184,6 +184,7 @@ class AggregateNER:
                     return self.pick_top_server_prediction(predictions_dict),2
             else:
                 print("Returning just the server that is not cross predicting, dumping the cross prediction. This is mainly to reduce the noise in prefix predictions that show up in CS context predictions")
+                pdb.set_trace()
                 ret_index  = 1  if (0 not in cross_predictions or cross_predictions[0] == True) else 0 #Given a server cross predicts, return the other server index
                 return ret_index,-1
                 #print("*********** One of them is also cross predicting  ******")
@@ -421,7 +422,9 @@ class myThread (threading.Thread):
       self.results = {}
    def run(self):
       print ("Starting " + self.url + self.param)
-      out = requests.get(self.url + self.param)
+      escaped_url = self.url + self.param.replace("#","-") #TBD. This is a nasty hack for client side handling of #. To be fixed. For some reason, even replacing with parse.quote or just with %23 does not help. The fragment after # is not sent to server. Works just fine in wget with %23
+      print("ESCAPED:",escaped_url)
+      out = requests.get(escaped_url)
       try:
           self.results = json.loads(out.text,object_pairs_hook=OrderedDict)
       except:
@@ -567,10 +570,7 @@ def batch_mode(inp_file):
 
 
 canned_sentences = [
-    "3. Ryan:__entity__ Johnson:__entity__ ( Canada ) 24.57",
-    "Presence of estrogen - binding sites on macrophage - like synoviocytes and CD8 + , CD29 + , CD45RO + T lymphocytes in normal and rheumatoid synovium .",
-    "METHODS / RESULTS : Cells exposed to high D - glucose ( 30 mmol / l ) caused an increase in [ 3H ] - thymidine incorporation and cell numbers at 24 and 48 h and normalized at 72 h ( p < 0 . 05 ) , whereas these changes were not found in high mannitol ( 30 mmol / l ) , IL:__entity__ -:__entity__ 1:__entity__ beta:__entity__ , or TNF:__entity__ alpha:__entity__ - stimulated mesangial cells .",
-    "1. Jesper:__entity__ Ronnback:__entity__ ( Sweden:__entity__ ) 25.76 points",
+    "Dutch forward Reggie Blinker had his indefinite suspension lifted by FIFA on Friday and was set to make his Sheffield Wednesday comeback against Liverpool:__entity__ on Saturday",
     "I met my Colt:__entity__ friends at the pub",
     "I met my best friend at Parkinson's:__entity__ for dinner",
     "I met my girl:__entity__ friends at the pub",
