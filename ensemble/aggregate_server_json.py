@@ -90,6 +90,12 @@ class AggregateNER:
             return server_index,span_count1,-1
         else:
             print("Servers do not agree on prediction for term:",results[0]["ner"][pos_index]["term"],":",s1_entity,s2_entity)
+            if (s2_entity == "O"):
+                print("Server 2 returned O. Picking server 1")
+                return 0,span_count1,-1
+            if (s1_entity == "O"):
+                print("Server 1 returned O. Picking server 2")
+                return 1,span_count2,-1
             #Both the servers dont agree on their predictions. First server is BIO server. Second is PHI
             #Examine both server predictions.
             #Case 1: If just one of them makes a single prediction, then just pick that - it indicates one model is confident while the other isnt.
@@ -117,9 +123,9 @@ class AggregateNER:
 
                  orig_cs_predictions = self.get_predictions_above_threshold(results[server_index]["orig_cs_prediction_details"][pos_index])
                  orig_cs_predictions_dict[server_index]  = orig_cs_predictions #this is used below for cross prediction determination since it is just a CS prediction
-                 single_prediction_count += 1 if (len(orig_cs_predictions) == 1) else 0 
-                 if (len(orig_cs_predictions) == 1):
-                    single_prediction_server_index = server_index
+                 #single_prediction_count += 1 if (len(orig_cs_predictions) == 1) else 0 
+                 #if (len(orig_cs_predictions) == 1):
+                 #   single_prediction_server_index = server_index
         if (single_prediction_count == 1):
             is_included = is_included_in_server_entities(orig_cs_predictions_dict[single_prediction_server_index],servers_arr[single_prediction_server_index],False)
             if(is_included == False) :
@@ -172,13 +178,13 @@ class AggregateNER:
                 print("*********** BOTH servers are ALSO predicting within their domain ******")
                 #if just one of them is predicting in the common set, then just pick the server that is predicting in its primary set.  
                 if (strict_cross_prediction_count == 1):
-                    ret_index  = 1  if strict_cross_predictions[0] == True else 0 #Given a server cross predicts, return the other server index
+                    ret_index  = 1  if (0 not in strict_cross_predictions or strict_cross_predictions[0] == True) else 0 #Given a server cross predicts, return the other server index
                     return ret_index,-1
                 else:
                     return self.pick_top_server_prediction(predictions_dict),2
             else:
                 print("Returning just the server that is not cross predicting, dumping the cross prediction. This is mainly to reduce the noise in prefix predictions that show up in CS context predictions")
-                ret_index  = 1  if cross_predictions[0] == True else 0 #Given a server cross predicts, return the other server index
+                ret_index  = 1  if (0 not in cross_predictions or cross_predictions[0] == True) else 0 #Given a server cross predicts, return the other server index
                 return ret_index,-1
                 #print("*********** One of them is also cross predicting  ******")
                 #return self.pick_top_server_prediction(predictions_dict),2
@@ -198,8 +204,10 @@ class AggregateNER:
         dist = predictions["cs_distribution"]
         sum_predictions = 0
         ret_arr = []
-        assert(len(dist) != 0)
-        mean_score = 1.0/len(dist) #input is a prob distriubution. so sum is 1
+        if(len(dist) != 0):
+            mean_score = 1.0/len(dist) #input is a prob distriubution. so sum is 1
+        else:
+            mean_score = 0
         #sum_deviation = 0
         #for node in dist:
         #    sum_deviation += (mean_score - node["confidence"])*(mean_score - node["confidence"])
@@ -209,11 +217,13 @@ class AggregateNER:
         threshold = mean_score
         pick_count = 1
         for node in dist:
-            if (node["confidence"] > threshold):
+            if (node["confidence"] >= threshold):
                 ret_arr.append({"e":node["e"],"conf":node["confidence"]})
                 pick_count += 1
             else:
                 break #this is a reverse sorted list. So no need to check anymore
+        if (len(dist) > 0):
+            assert(len(ret_arr) > 0)
         return ret_arr
 
     def check_if_entity_in_arr(self,entity,arr):
@@ -226,7 +236,11 @@ class AggregateNER:
         if (cross_prediction_count == 1 or cross_prediction_count == -1):
             #This is the case where we are emitting just one server prediction. In this case, if  CS and consolidated dont match, emit both
             if (pivot_index in results[server_index]["orig_cs_prediction_details"]):
-                orig_cs_entity = results[server_index]["orig_cs_prediction_details"][pivot_index]['cs_distribution'][0]
+                if (len(results[server_index]["orig_cs_prediction_details"][pivot_index]['cs_distribution']) == 0):
+                    #just use the ci prediction in this case. This happens only for boundary cases of a single entity in a sentence and there is no context
+                    orig_cs_entity = results[server_index]["orig_ci_prediction_details"][pivot_index]['cs_distribution'][0]
+                else:
+                    orig_cs_entity = results[server_index]["orig_cs_prediction_details"][pivot_index]['cs_distribution'][0]
                 orig_ci_entity = results[server_index]["orig_ci_prediction_details"][pivot_index]['cs_distribution'][0]
                 m1 = orig_cs_entity["e"].split('[')[0]
                 m1_ci = orig_ci_entity["e"].split('[')[0]
@@ -258,22 +272,24 @@ class AggregateNER:
                             return ret_obj
                         else:
                             #We come here for the case where CI is not in server list. So we pick the second cs as an option if meaningful
-                            assert(len(results[server_index]["orig_cs_prediction_details"][pivot_index]['cs_distribution']) >= 2)
-                            ret_arr = self.get_predictions_above_threshold(results[server_index]["orig_cs_prediction_details"][pivot_index])
-                            orig_cs_second_entity = results[server_index]["orig_cs_prediction_details"][pivot_index]['cs_distribution'][1]
-                            m2_cs = orig_cs_second_entity["e"].split('[')[0]
-                            is_cs_included = True if (m2_cs in servers_arr[server_index]["precedence"]) else False
-                            is_cs_included = True #Disabling cs included check. If prediction above threshold is cross prediction, then letting it through
-                            assert (m2_cs != m1)
-                            if (is_cs_included and self.check_if_entity_in_arr(m2_cs,ret_arr)):
-                                ret_obj = results[server_index]["ner"][run_index].copy()
-                                dummy,prefix = prefix_strip(ret_obj["e"])
-                                n1 = flip_category(orig_cs_second_entity)
-                                n1["e"] = prefix +  n1["e"]
-                                n2 = flip_category(orig_cs_entity)
-                                n2["e"] = prefix +  n2["e"]
-                                ret_obj["e"] = n2["e"] + "/" + n1["e"]
-                                return ret_obj
+                            if (len(results[server_index]["orig_cs_prediction_details"][pivot_index]['cs_distribution']) >= 2):
+                                ret_arr = self.get_predictions_above_threshold(results[server_index]["orig_cs_prediction_details"][pivot_index])
+                                orig_cs_second_entity = results[server_index]["orig_cs_prediction_details"][pivot_index]['cs_distribution'][1]
+                                m2_cs = orig_cs_second_entity["e"].split('[')[0]
+                                is_cs_included = True if (m2_cs in servers_arr[server_index]["precedence"]) else False
+                                is_cs_included = True #Disabling cs included check. If prediction above threshold is cross prediction, then letting it through
+                                assert (m2_cs != m1)
+                                if (is_cs_included and self.check_if_entity_in_arr(m2_cs,ret_arr)):
+                                    ret_obj = results[server_index]["ner"][run_index].copy()
+                                    dummy,prefix = prefix_strip(ret_obj["e"])
+                                    n1 = flip_category(orig_cs_second_entity)
+                                    n1["e"] = prefix +  n1["e"]
+                                    n2 = flip_category(orig_cs_entity)
+                                    n2["e"] = prefix +  n2["e"]
+                                    ret_obj["e"] = n2["e"] + "/" + n1["e"]
+                                    return ret_obj
+                                else:
+                                    return flip_category(results[server_index]["ner"][run_index])
                             else:
                                 return flip_category(results[server_index]["ner"][run_index])
                     else:
@@ -366,9 +382,10 @@ class AggregateNER:
 
                     if (cross_prediction_count == 0 or cross_prediction_count == 2): #This is an ambiguous prediction. Send both server responses
                         second_server = 1 if server_index == 0 else 1
-                        ambig_ensembled_conf[run_index] = results[second_server]["entity_distribution"][run_index]
-                        ambig_ensembled_conf[run_index]["e"] = ensembled_ner[run_index]["e"] #this is to make sure the same tag can be taken from NER result or this structure.
-                        ambig_ensembled_ci[run_index] = results[second_server]["ci_prediction_details"][run_index]
+                        if (run_index in  results[second_server]["entity_distribution"]): #It may not be present if the B/I tags are out of sync from servers.
+                            ambig_ensembled_conf[run_index] = results[second_server]["entity_distribution"][run_index]
+                            ambig_ensembled_conf[run_index]["e"] = ensembled_ner[run_index]["e"] #this is to make sure the same tag can be taken from NER result or this structure.
+                            ambig_ensembled_ci[run_index] = results[second_server]["ci_prediction_details"][run_index]
                 if (ensembled_ner[run_index]["e"] != "O"):
                     self.inferred_entities_log_fp.write(results[0]["ner"][run_index]["term"] + " " + ensembled_ner[run_index]["e"]  + "\n")
             term_index += span_count
@@ -550,6 +567,30 @@ def batch_mode(inp_file):
 
 
 canned_sentences = [
+    "3. Ryan:__entity__ Johnson:__entity__ ( Canada ) 24.57",
+    "Presence of estrogen - binding sites on macrophage - like synoviocytes and CD8 + , CD29 + , CD45RO + T lymphocytes in normal and rheumatoid synovium .",
+    "METHODS / RESULTS : Cells exposed to high D - glucose ( 30 mmol / l ) caused an increase in [ 3H ] - thymidine incorporation and cell numbers at 24 and 48 h and normalized at 72 h ( p < 0 . 05 ) , whereas these changes were not found in high mannitol ( 30 mmol / l ) , IL:__entity__ -:__entity__ 1:__entity__ beta:__entity__ , or TNF:__entity__ alpha:__entity__ - stimulated mesangial cells .",
+    "1. Jesper:__entity__ Ronnback:__entity__ ( Sweden:__entity__ ) 25.76 points",
+    "I met my Colt:__entity__ friends at the pub",
+    "I met my best friend at Parkinson's:__entity__ for dinner",
+    "I met my girl:__entity__ friends at the pub",
+    "I met my XCorp:__entity__ friends at the pub",
+    "I met my California:__entity__ friends at the pub",
+    "I met my two:__entity__  friends at the pub",
+    "Parkinson who works for XCorp and lives in New York suffers from Lou Gehrig's",
+    "Lou Gehrig who works for XCorp and lives in New York suffers from Parkinson's",
+    "Parkinson who works for XCorp and lives in Rio De Janiro suffers from Lou Gehrig's",
+    "Lou Gehrig who works for XCorp and lives in Rio De Janiro suffers from Parkinson's",
+    "He felt Dolphins has a chance to win this year's competition",
+    "Lou Gehrig who works for XCorp and lives in New York suffers from Parkinson's",
+    "I admire my Bari  roommates and wish everyone a Happy Casimir Pulaski Day",
+    "Parkinson who works for XCorp and  lives in New York suffers from  Lou Gehrig's disease",
+    "Parkinson who works for XCorp and  lives in Rio De Janiro suffers from  Lou Gehrig's disease",
+    "John Doe who works for XCorp and lives in Nonenburg suffers from Parkinson's",
+    "These results indicate that Aloe vera whole - leaf extract is an intestinal irritant in F344 / N rats and B6C3F1 mice and a carcinogen of the large intestine in F344 / N rats .",
+    "Of these , 23 ( 13 . 6 % ) were due to GIB ( Upper GIB = 19 , Lower GIB = 4 ) .",
+    "Liverpool:__entity__ 16 9 4 3 26 14 31 .",
+    "Extras ( lb-17 nb-8 w-3 ) 28 . ",
     "imatinib was used to treat Michael:__entity__ Jackson:__entity__",
     "Mesothelioma is caused by exposure to asbestos:__entity__",
     "It was Incaviglia 's sixth grand slam and 200th homer of his career .",
