@@ -4,28 +4,29 @@
 "DISEASE",
 "GENE",
 "BODY_PART_OR_ORGAN_COMPONENT",
+"BIO",
 "ORGANISM_FUNCTION"
 ],
 
 "phi_precedence_arr" : [
 "PERSON",
-"LOCATION",
 "ORGANIZATION",
 "ENT",
 "COLOR",
 "LANGUAGE",
 "GRAMMAR_CONSTRUCT",
+"LOCATION",
 "SOCIAL_CIRCUMSTANCES"
 ],
 
 "common_entities_arr":
 [
-    "BIO",
     "UNTAGGED_ENTITY",
     "OTHER",
     "GRAMMAR_CONSTRUCT",
     "OBJECT",
-    "MEASURE"
+    "MEASURE",
+    "LOCATION"
 ],
 
 "actions_arr" : [
