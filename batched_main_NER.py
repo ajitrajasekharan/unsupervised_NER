@@ -611,7 +611,7 @@ class UnsupNER:
                                                                                     #Also trunc_e contains the consolidated entity names. 
             assert(len(trunc_e) <= len(curr_counts)) # can be less if untagged is skipped
             assert(len(trunc_e) == len(trunc_counts))
-            trunc_counts = softmax(trunc_counts)
+            trunc_counts = softmax(trunc_counts) #this normalization is done to reduce the effect of absolute count of certain labeled entities, while aggregating the entity vectors across descriptors
             curr_counts_sum = sum(map(int,trunc_counts)) #Using truncated count
             curr_counts_sum = 1 if curr_counts_sum == 0 else curr_counts_sum
             for j in range(len(trunc_e)): #this is iterating through the current instance  of all *consolidated* tagged entity predictons  (that is except UNTAGGED_ENTITY)
