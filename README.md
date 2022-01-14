@@ -1,8 +1,8 @@
-# Unsupervised NER (prototype)
-Prototype unsupervised implementation NER using BERT's MLM and wrapper around [Dat Quoc Nguyen's POS tagger/Dependency parser](https://github.com/datquocnguyen/jPTDP)
+# Self-supervised NER (prototype)
+Prototype self-supervised implementation NER using BERT's MLM and wrapper around [Dat Quoc Nguyen's POS tagger/Dependency parser](https://github.com/datquocnguyen/jPTDP)
 
 
-[Medium post describing this method](https://towardsdatascience.com/unsupervised-ner-using-bert-2d7af5f90b8a)
+[Medium post describing the first iteration of this method](https://towardsdatascience.com/unsupervised-ner-using-bert-2d7af5f90b8a)
 
  <img src="NER.png" width="600">
 
