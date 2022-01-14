@@ -6,7 +6,7 @@ Prototype self-supervised implementation NER using BERT's MLM and wrapper around
 
  <img src="NER.png" width="600">
 
-*The examples below are the output of using bert large cased for unsupervised NER*
+*This repository containes code for solving NER  with self-supervised learning (SSL) alone avoiding supervised learning. It addresses the typical challenges facing any NER model. A supervised model in particular requires sufficient labeled sentences to address cases illustrated in the figure above :- (a) terms whose entity types change based on sentence context (b) sentences with very little context to determine entity type (c) terms whose casing offers cue to the entity type (d) sentences where multiple entity types are possible in a sentence position and only the word in that position offers clue to the entity type (e) a single term that has different meanings in different contexts (f) detecting numerical elements and units (g) recognizing entity types spanning different domains, that all need to be recognized for a use case(e.g. biomedical use of detecting biomedical terms as well as patient identities/health information). The examples above are the output of using two BERT models in an ensemble.*
 
 # Installation 
 
