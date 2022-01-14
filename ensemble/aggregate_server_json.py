@@ -177,14 +177,14 @@ class AggregateNER:
             elif (cross_prediction_count == 0):
                 print("*********** BOTH servers are ALSO predicting within their domain ******")
                 #if just one of them is predicting in the common set, then just pick the server that is predicting in its primary set.  
-                if (strict_cross_prediction_count == 1):
-                    ret_index  = 1  if (0 not in strict_cross_predictions or strict_cross_predictions[0] == True) else 0 #Given a server cross predicts, return the other server index
-                    return ret_index,-1
-                else:
-                    return self.pick_top_server_prediction(predictions_dict),2
+                #if (strict_cross_prediction_count == 1):
+                #    ret_index  = 1  if (0 not in strict_cross_predictions or strict_cross_predictions[0] == True) else 0 #Given a server cross predicts, return the other server index
+                #    return ret_index,-1
+                #else:
+                #    return self.pick_top_server_prediction(predictions_dict),2
+                return self.pick_top_server_prediction(predictions_dict),2
             else:
                 print("Returning just the server that is not cross predicting, dumping the cross prediction. This is mainly to reduce the noise in prefix predictions that show up in CS context predictions")
-                pdb.set_trace()
                 ret_index  = 1  if (0 not in cross_predictions or cross_predictions[0] == True) else 0 #Given a server cross predicts, return the other server index
                 return ret_index,-1
                 #print("*********** One of them is also cross predicting  ******")
@@ -567,9 +567,28 @@ def batch_mode(inp_file):
             count += 1
             gen_ner_output(results,ner_fp)
             #print(json.dumps(results,indent=4))
+            #pdb.set_trace()
 
 
 canned_sentences = [
+    "I thank my Beijing friends and wish everyone a Happy New Year",
+    "I thank my Bari friends and wish everyone a Happy Casimir Pulaski  Day",
+    "I admire my Bari roommates and wish everyone a Happy Casimir Pulaski  Day",
+    "I thank my Beijing:__entity__ friends and wish everyone a Happy New:__entity__ Year:__entity__",
+    "I thank my Bari:__entity__ friends and wish everyone a Happy Casimir:__entity__ Pulaski:__entity__  Day:__entity__",
+    "I admire my Bari:__entity__ roommates and wish everyone a Happy Casimir:__entity__ Pulaski:__entity__  Day:__entity__",
+    "In the LASOR:__entity__ trial:__entity__ , increasing daily imatinib:__entity__ dose from 400:__entity__ to 600:__entity__ mg:__entity__ induced MMR:__entity__ at 12:__entity__ and 24 months:__entity__ in 25%:__entity__ and 36%:__entity__ of the patients, respectively, who had suboptimal:__entity__ cytogenetic:__entity__ responses:__entity__",
+    "In the LASOR trial , increasing daily imatinib dose from 400 to 600 mg:__entity__ induced MMR at 12 and 24 months in 25% and 36% of the patients, respectively, who had suboptimal cytogenetic responses",
+    "lou:__entity__  gehrig:__entity__  was diagnosed with parkinsons:__entity__",
+    "Lou:__entity__ Gehrig:__entity__ who works for XCorp:__entity__ and lives in New:__entity__ York:__entity__ suffers from Parkinson's:__entity__",
+    "Parkinson:__entity__ who works for XCorp:__entity__ and lives in New:__entity__ York:__entity__ suffers from Lou:__entity__ Gehrig's:__entity__",
+    "In particular , VPA:__entity__ and SAHA:__entity__ upregulate key cyclin - dependent kinase ( CDK ) inhibitors .",
+    "He  tends  to  switch  to  speaking  in  Tamil:__entity__  when  talking  to  his  colleagues  coming  from  the  same  region  .",
+    "Stanford called",
+    "A eGFR:__entity__ below 60 indicates chronic kidney disease",
+    "Overexpression of EGFR:__entity__  occurs across a wide range of different cancers",
+    "Bio-Techne's genomic tools include advanced tissue-based in-situ hybridization assays (ISH) for research and clinical use, sold under the ACD:__entity__ brand as well as a portfolio of clinical molecular diagnostic oncology assays, including the IntelliScore test (EPI) for prostate cancer diagnosis",
+    "Apple:__entity__ iPod:__entity__ touch:__entity__ 3rd:__entity__ Generation:__entity__ Black:__entity__ (:__entity__ 64:__entity__ GB:__entity__ ):__entity__ Works Great - Full read by eBay http://t.co/XuO9hglEOB http://t.co/IZbxKy3ezL",
     "Dutch forward Reggie Blinker had his indefinite suspension lifted by FIFA on Friday and was set to make his Sheffield Wednesday comeback against Liverpool:__entity__ on Saturday",
     "I met my Colt:__entity__ friends at the pub",
     "I met my best friend at Parkinson's:__entity__ for dinner",
@@ -666,7 +685,6 @@ canned_sentences = [
     "The portfolio manager of the new cryptocurrency firm underwent a bone marrow biopsy for AML:__entity__",
     "Omicron:__entity__ live updates: Variant detected in Houston's wastewater",
     "Omicron live updates: Variant detected in Houston's wastewater",
-    "Bio-Techne's genomic tools include advanced tissue-based in-situ hybridization assays (ISH) for research and clinical use, sold under the ACD:__entity__ brand as well as a portfolio of clinical molecular diagnostic oncology assays, including the IntelliScore test (EPI) for prostate cancer diagnosis",
     "I admire my Bari:__entity__ roommates and wish everyone a Happy Casimir:__entity__ Pulaski:__entity__  Day:__entity__",
     "Currently, there are no approved:__entity__ therapies available for CML:__entity__ patients who fail dasatinib:__entity__ or nilotinib:__entity__ in second line",
     "In the LASOR:__entity__ trial:__entity__ , increasing daily imatinib dose from 400 to 600mg induced MMR at 12 and 24 months in 25% and 36% of the patients, respectively, who had suboptimal cytogenetic responses",
