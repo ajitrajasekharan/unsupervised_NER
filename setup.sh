@@ -56,6 +56,11 @@ function microservices
     (cd services;mkdir -p phi;  cd phi; install_bert_desc 2; install_ner 2; )
     echo "Starting ensemble server"
     (cd ensemble; ./run_server_json.sh &)
+    echo "Testing install with query"
+    sleep 5
+    wget -O test "http://127.0.0.1:8059/dummy/Lou:__entity__ Gehrig:__entity__ who works in XCorp:__entity__ suffers from Parkinson's:__entity__"
+    echo "output saved in test"
+    more test
     
 }
 
