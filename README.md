@@ -30,7 +30,7 @@ _This repository containes code for solving NER  with self-supervised learning (
  
  TBD
 
- ## Step 2. Install POS service 
+ ### Step 2. Install POS service 
  _(this can be skipped if we only require specific phrases to be tagged)_
  
  Install POS service using https://github.com/ajitrajasekharan/JPTDP_wrapper.git**
@@ -48,6 +48,7 @@ Confirm installation works by
  
 _Note POS service requires python 2.7 environment_
   
+ 
  
 ###  First Version 1 Usage note 
 
