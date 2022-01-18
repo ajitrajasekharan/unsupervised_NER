@@ -31,7 +31,7 @@ _This repository containes code for solving NER  with self-supervised learning (
  Run 
  ./setup.sh
  
- _this will install and load all 5 microservices. When done _(assuming all goes well)_ should display the output of a test query_
+ _this will install and load all 5 microservices. When done (assuming all goes well) it should display the output of a test query_
 
  ### Step 2. Install POS service 
  _**(this can be skipped if we only require specific phrases to be tagged)**_
@@ -53,6 +53,14 @@ _Note POS service requires python 2.7 environment_
  
  - This can now be run as a service. run_servers.sh
  - Simple Ensembling service added for combining results of multiple NER servers
+ 
+
+## Second version usage notes
+ - If the install runs into issess, we could start the services independantly to isolate problem.  
+ - First install descriptors [service](https://github.com/ajitrajasekharan/bert_descriptors.git). Confirm it works. Then install NER [service](https://github.com/ajitrajasekharan/unsupervised_NER.git). Do this for both models (bio and phi). Then test ensemble service. Ensemble is in the subdirectory _ensemble_ in the NER service. 
+ - Test sets to test the output of NER against 11 benchmarks are in [this repository](https://github.com/ajitrajasekharan/ner_test.git). 
+ - This repository can be used as a metric to test a pretrained model trained from scratch. We can give the model an F1-score just like we do fine tuned model. To do this, we need to convert human labels file _(e.g. bootstrap_entities.txt)_ into magnified entity vectors using this [repository](https://github.com/ajitrajasekharan/bert_vector_clustering.git). Just invoke run.sh and use the _subword neighbor clustering option_ . If we want to pick the initial terms to label - the creation of bootstrap_entities.txt itself, run the same tool, but just choose the _generate cluster_ option and adaptive clustering. This will yield about 4k cluster pivots. We can start labeling them and then create entity vectors.  The entity vectors (e.g. labels.txt) can then be used with descriptor [service](https://github.com/ajitrajasekharan/bert_descriptors.git) to test model.  If we are creating new entity types, then the entity map file needs to be updated accordingly to map subtypes to types, or just add new types.
+ 
  
  
 ###  First Version Usage notes 
