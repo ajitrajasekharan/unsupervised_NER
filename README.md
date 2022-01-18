@@ -42,9 +42,20 @@ _This repository containes code for solving NER  with self-supervised learning (
 
 _Note POS service requires python 2.7 environment_
   
+    
+ ### Revision notes for major updates
+ 
+ 17 Jan 2022
+ - Ensemble service of NER with two models tested on 11  NER benchmarks as described in this [post.](https://ajitrajasekharan.github.io/2021/01/02/my-first-post.html)
  
  
-###  First Version 1 Usage note 
+ 17 Sept 2021
+ 
+ - This can now be run as a service. run_servers.sh
+ - Simple Ensembling service added for combining results of multiple NER servers
+ 
+ 
+###  First Version Usage notes 
 
 The unsupervised NER tool  can be used in three ways. 
 
@@ -56,17 +67,7 @@ The unsupervised NER tool  can be used in three ways.
     - $ python main_NER.py 3 single_entity_test.txt
     
     
-    
- ### Revision notes
  
- 17 Jan 2022
- - Ensemble service of NER with two models tested on 11  NER benchmarks
- 
- 
- 17 Sept 2021
- 
- - This can now be run as a service. run_servers.sh
- - Simple Ensembling service added for combining results of multiple NER servers
   
 
 ### License
