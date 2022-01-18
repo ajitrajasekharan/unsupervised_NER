@@ -25,6 +25,16 @@ _This repository containes code for solving NER  with self-supervised learning (
  <img src="ensemble.png" width="600">
 
  _If the use case is to automatically detect all noun phrase spans in a sentence, then POS tagger needs to be installed. If we only require specific phrases of interest to us in a sentence to be tagged (e.g. colorectal cancer above), then POS tagger install is **not** required. In the first use case, 7 microservices (POS tagger is made up of two microservices)  are started. In the second use, case 5 microservices are started._ 
+ 
+### Step 1. Installing and starting micoservices common to both use cases
+ 
+ TBD
+
+ ## Step 2. Install POS service 
+ _(this can be skipped if we only require specific phrases to be tagged)_
+ 
+ TBD
+ 
 
 **1) Install POS service using https://github.com/ajitrajasekharan/JPTDP_wrapper.git**
 
