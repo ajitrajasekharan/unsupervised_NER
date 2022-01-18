@@ -27,10 +27,10 @@ function install_bert_desc
     if [ $param -eq 2 ]
     then
         echo "Starting BBC descriptor service"
-        (cd bert_descriptors; cp ../../../models/bbc/* . ; cp ../../../labels/bbc_labels.txt ./labels.txt; cp ../../../labels/bbc_server_config.json ./server_config.json;  echo "python p3_batch_server.py 8088" >  ./run_batched_response_servers.sh ; ./run_batched_response_servers.sh &)
+        (cd bert_descriptors; cp ../../../models/bbc/* . ; cp ../../../labels/bbc_labels.txt ./labels.txt; cp ../../../labels/desc_bbc_config.json ./server_config.json;  echo "python p3_batch_server.py 8088" >  ./run_batched_response_servers.sh ; ./run_batched_response_servers.sh &)
     else
         echo "Starting BIO descriptor service"
-        (cd bert_descriptors; cp ../../../models/a100/* . ;cp ../../../labels/a100_labels.txt ./labels.txt; cp ../../../labels/a100_server_config.json ./server_config.json ;  ./run_batched_response_servers.sh &)
+        (cd bert_descriptors; cp ../../../models/a100/* . ;cp ../../../labels/a100_labels.txt ./labels.txt; cp ../../../labels/desc_a100_config.json ./server_config.json ;  ./run_batched_response_servers.sh &)
     fi
 }
 
@@ -41,10 +41,10 @@ function install_ner
     if [ $param -eq 2 ]
     then
         echo "Starting BBC NER service"
-        (cd unsupervised_NER; echo "python batched_p3_server.py 9089" >  ./batched_run_server.sh; ./batched_run_server.sh & )
+        (cd unsupervised_NER; cp ../../../labels/ner_bbc_config.json ./config.json; echo "python batched_p3_server.py 9089" >  ./batched_run_server.sh; ./batched_run_server.sh & )
     else
         echo "Starting BIO NER service"
-        (cd unsupervised_NER; ./batched_run_server.sh &)
+        (cd unsupervised_NER; cp ../../../labels/ner_a100_config.json ./config.json; ./batched_run_server.sh &)
     fi
 }
 
