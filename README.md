@@ -1,9 +1,11 @@
 ### Self-supervised NER (prototype)
-
+_This repository containes code for solving NER  with self-supervised learning (SSL) alone avoiding supervised learning._
+<br/>
+<br/>
+<br/>
 
  <img src="NER.png" width="600">
 
-*This repository containes code for solving NER  with self-supervised learning (SSL) alone avoiding supervised learning. **It addresses the typical challenges facing any NER model in real world applications applications.** A supervised model in particular requires sufficient labeled sentences to address cases  illustrated in the figure above :- (a) terms whose entity types change based on sentence context (b) sentences with very little context to determine entity type (c) terms whose casing offers cue to the entity type (d) entity type of complete or proper subsets of phrase spans (e) sentences where multiple entity types are possible in a sentence position and only the word in that position offers clue to the entity type (f) a single term that has different meanings in different contexts (g) detecting numerical elements and units (h) recognizing entity types spanning different domains, that  need to be recognized for a use case(e.g. biomedical use of detecting biomedical terms as well as patient identities/health information). Image by Author The examples above are the output of using two BERT models in an ensemble.*
 
 
 [Post describing the second iteration of this method](https://ajitrajasekharan.github.io/2021/01/02/my-first-post.html)
