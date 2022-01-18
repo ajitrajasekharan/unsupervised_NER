@@ -26,9 +26,12 @@ _This repository containes code for solving NER  with self-supervised learning (
 
  _If the use case is to automatically detect all noun phrase spans in a sentence, then POS tagger needs to be installed. If we only require specific phrases of interest to us in a sentence to be tagged (e.g. colorectal cancer above), then POS tagger install is **not** required. In the first use case, 7 microservices (POS tagger is made up of two microservices)  are started. In the second use, case 5 microservices are started._ 
  
-### Step 1. Installing and starting micoservices common to both use cases
+### Step 1. Installing and starting microservices common to both use cases
  
- TBD
+ Run 
+ ./setup.sh
+ 
+ _this will load all 5 microservices and should display the output of a test query_
 
  ### Step 2. Install POS service 
  _(this can be skipped if we only require specific phrases to be tagged)_
