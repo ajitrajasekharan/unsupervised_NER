@@ -31,7 +31,7 @@ _This repository containes code for solving NER  with self-supervised learning (
  Run 
  ./setup.sh
  
- _this will load all 5 microservices and should display the output of a test query_
+ _this will install and load all 5 microservices. When done _(assuming all goes well)_ should display the output of a test query_
 
  ### Step 2. Install POS service 
  _**(this can be skipped if we only require specific phrases to be tagged)**_
