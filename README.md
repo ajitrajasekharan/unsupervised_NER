@@ -34,7 +34,7 @@ _This repository containes code for solving NER  with self-supervised learning (
  _this will load all 5 microservices and should display the output of a test query_
 
  ### Step 2. Install POS service 
- _(this can be skipped if we only require specific phrases to be tagged)_
+ _**(this can be skipped if we only require specific phrases to be tagged)**_
  
  Install POS service using  [this link](https://github.com/ajitrajasekharan/JPTDP_wrapper.git)
 
