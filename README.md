@@ -15,7 +15,7 @@
 ### Additional links
 
 - [Test repository link](https://github.com/ajitrajasekharan/ner_test.git) used to test this approach
-- [Medium post describing the first iteration of this method](https://towardsdatascience.com/unsupervised-ner-using-bert-2d7af5f90b8a)
+- [Medium post describing the previous iteration of this method](https://towardsdatascience.com/unsupervised-ner-using-bert-2d7af5f90b8a)
 - To identify noun phrase spans, [Dat Quoc Nguyen's POS tagger/Dependency parser](https://github.com/datquocnguyen/jPTDP) is used.
 
 ### Installation 
