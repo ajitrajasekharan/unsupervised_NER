@@ -37,15 +37,6 @@ _This repository containes code for solving NER  with self-supervised learning (
 
 *Make sure to run **both** services in the install instructions*
 
-Confirm installation works by 
-
-    $ wget -O POS "http://127.0.0.1:8073/John flew from New York to Rio De Janiro"
-    
-   The output POS file should contain
-  
-  <img src="POS.png" width="600">
-  
- 
 _Note POS service requires python 2.7 environment_
   
  
