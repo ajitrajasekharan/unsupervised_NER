@@ -33,7 +33,7 @@ _This repository containes code for solving NER  with self-supervised learning (
  ### Step 2. Install POS service 
  _(this can be skipped if we only require specific phrases to be tagged)_
  
- Install POS service using https://github.com/ajitrajasekharan/JPTDP_wrapper.git**
+ Install POS service using  [this link](https://github.com/ajitrajasekharan/JPTDP_wrapper.git)
 
 *Make sure to run **both** services in the install instructions*
 
