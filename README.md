@@ -33,10 +33,7 @@ _This repository containes code for solving NER  with self-supervised learning (
  ## Step 2. Install POS service 
  _(this can be skipped if we only require specific phrases to be tagged)_
  
- TBD
- 
-
-**1) Install POS service using https://github.com/ajitrajasekharan/JPTDP_wrapper.git**
+ Install POS service using https://github.com/ajitrajasekharan/JPTDP_wrapper.git**
 
 *Make sure to run **both** services in the install instructions*
 
@@ -49,37 +46,10 @@ Confirm installation works by
   <img src="POS.png" width="600">
   
  
- **2) Install BERT descriptor service using https://github.com/ajitrajasekharan/bert_descriptors.git**
- 
- Confirm installation works by 
- 
-   $ wget -O DES "http://127.0.0.1:8087/dummy/0/John flew from entity to Rio De Janiro"
-   
-   The output DES file should contain
-   
- <img src="DES.png" width="600">
- 
- 
-
-
-**3) Install BERT vector clustering service using https://github.com/ajitrajasekharan/bert_vector_clustering.git**
- 
- Confirm installation works by 
- 
-  $ wget -O ENT "http://127.0.0.1:8043/Miami Chicago Florida Albuquerque Houston California London Boston Austin Mexico"
-  
-   The output ENT file should contain
-   
-   LOC 12 LOC 12 LOC 12 LOC 12 LOC 12 LOC 12 LOC 12 LOC 12 LOC  12 LOC 12
+_Note POS service requires python 2.7 environment_
   
  
- 
- **Additional notes**
- 
- - Step 1 above requires python 2.7 environment wheareas steps 2 and 3 requires python 3+. Step 2 requires pytorch environment. So it is best to run these services separately in different environnments. 
-  
- 
-### Usage
+###  First Version 1 Usage note 
 
 The unsupervised NER tool  can be used in three ways. 
 
@@ -93,6 +63,10 @@ The unsupervised NER tool  can be used in three ways.
     
     
  ### Revision notes
+ 
+ 17 Jan 2022
+ - Ensemble service of NER with two models tested on 11  NER benchmarks
+ 
  
  17 Sept 2021
  
