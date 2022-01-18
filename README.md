@@ -1,4 +1,4 @@
-# Self-supervised NER (prototype)
+### Self-supervised NER (prototype)
 
 
  <img src="NER.png" width="600">
@@ -6,13 +6,24 @@
 *This repository containes code for solving NER  with self-supervised learning (SSL) alone avoiding supervised learning. **It addresses the typical challenges facing any NER model in real world applications applications.** A supervised model in particular requires sufficient labeled sentences to address cases  illustrated in the figure above :- (a) terms whose entity types change based on sentence context (b) sentences with very little context to determine entity type (c) terms whose casing offers cue to the entity type (d) entity type of complete or proper subsets of phrase spans (e) sentences where multiple entity types are possible in a sentence position and only the word in that position offers clue to the entity type (f) a single term that has different meanings in different contexts (g) detecting numerical elements and units (h) recognizing entity types spanning different domains, that  need to be recognized for a use case(e.g. biomedical use of detecting biomedical terms as well as patient identities/health information). Image by Author The examples above are the output of using two BERT models in an ensemble.*
 
 
-[Medium post describing the second iteration of this method] (TBD. Update link here. TBD also update with test set evaluation code and eval results).
+[Medium post describing the second iteration of this method] (https://ajitrajasekharan.github.io/2021/01/02/my-first-post.html)
+
+### Model performance on 11 datasets
+
+<image src="performance.png" width="600">
+
+
+
+[Test repository link[(https://github.com/ajitrajasekharan/ner_test.git) used to test this approach
+
 
 [Medium post describing the first iteration of this method](https://towardsdatascience.com/unsupervised-ner-using-bert-2d7af5f90b8a)
 
+
+
 To identify noun phrase spans, [Dat Quoc Nguyen's POS tagger/Dependency parser](https://github.com/datquocnguyen/jPTDP) is used.
 
-# Installation 
+### Installation 
 
 **1) Install POS service using https://github.com/ajitrajasekharan/JPTDP_wrapper.git**
 
@@ -57,7 +68,7 @@ Confirm installation works by
  - Step 1 above requires python 2.7 environment wheareas steps 2 and 3 requires python 3+. Step 2 requires pytorch environment. So it is best to run these services separately in different environnments. 
   
  
-# Usage
+### Usage
 
 The unsupervised NER tool  can be used in three ways. 
 
@@ -70,7 +81,7 @@ The unsupervised NER tool  can be used in three ways.
     
     
     
- # Revision notes
+ ### Revision notes
  
  17 Sept 2021
  
@@ -78,7 +89,7 @@ The unsupervised NER tool  can be used in three ways.
  - Simple Ensembling service added for combining results of multiple NER servers
   
 
-# License
+### License
 
 This repository is covered by MIT license. 
 
