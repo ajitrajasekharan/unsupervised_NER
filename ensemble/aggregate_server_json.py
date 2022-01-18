@@ -555,10 +555,10 @@ def gen_ner_output(results,fp):
     fp.write("\n")
     fp.flush()
 
-def batch_mode(inp_file):
+def batch_mode(inp_file,output_file):
     obj = AggregateNER()
     count = 1
-    ner_fp = open(NER_OUTPUT_FILE,"w")
+    ner_fp = open(output_file,"w")
     with open(inp_file) as fp:
         for line in fp:
             line = line.rstrip('\n')
@@ -571,10 +571,11 @@ def batch_mode(inp_file):
 
 
 canned_sentences = [
+    "I thank my Beijing:__entity__ friends and wish everyone a Happy New:__entity__ Year:__entity__",
+    "He drove from Kisatchie National Forest to North Carolina through sunny Alabama",
     "I thank my Beijing friends and wish everyone a Happy New Year",
     "I thank my Bari friends and wish everyone a Happy Casimir Pulaski  Day",
     "I admire my Bari roommates and wish everyone a Happy Casimir Pulaski  Day",
-    "I thank my Beijing:__entity__ friends and wish everyone a Happy New:__entity__ Year:__entity__",
     "I thank my Bari:__entity__ friends and wish everyone a Happy Casimir:__entity__ Pulaski:__entity__  Day:__entity__",
     "I admire my Bari:__entity__ roommates and wish everyone a Happy Casimir:__entity__ Pulaski:__entity__  Day:__entity__",
     "In the LASOR:__entity__ trial:__entity__ , increasing daily imatinib:__entity__ dose from 400:__entity__ to 600:__entity__ mg:__entity__ induced MMR:__entity__ at 12:__entity__ and 24 months:__entity__ in 25%:__entity__ and 36%:__entity__ of the patients, respectively, who had suboptimal:__entity__ cytogenetic:__entity__ responses:__entity__",
@@ -727,6 +728,7 @@ def test_canned_sentences():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='main NER for a single model ',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-input', action="store", dest="input",default=DEFAULT_TEST_BATCH_FILE,help='Input file for batch run option')
+    parser.add_argument('-output', action="store", dest="output",default=NER_OUTPUT_FILE,help='Output file for batch run option')
     parser.add_argument('-option', action="store", dest="option",default="canned",help='Valid options are canned,batch,interactive. canned - test few canned sentences used in medium artice. batch - tag sentences in input file. Entities to be tagged are determing used POS tagging to find noun phrases.interactive - input one sentence at a time')
     results = parser.parse_args()
 
@@ -737,7 +739,7 @@ if __name__ == '__main__':
             print("Input file needs to be specified")
         else:
             print("Running Batch mode")
-            batch_mode(results.input)
+            batch_mode(results.input,results.output)
     else:
         print("Running canned test mode")
         test_canned_sentences()
