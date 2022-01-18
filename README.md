@@ -12,18 +12,17 @@
 
 <image src="performance.png" width="600">
 
+### Additional links
 
-
-[Test repository link](https://github.com/ajitrajasekharan/ner_test.git) used to test this approach
-
-
-[Medium post describing the first iteration of this method](https://towardsdatascience.com/unsupervised-ner-using-bert-2d7af5f90b8a)
-
-
-
-To identify noun phrase spans, [Dat Quoc Nguyen's POS tagger/Dependency parser](https://github.com/datquocnguyen/jPTDP) is used.
+- [Test repository link](https://github.com/ajitrajasekharan/ner_test.git) used to test this approach
+- [Medium post describing the first iteration of this method](https://towardsdatascience.com/unsupervised-ner-using-bert-2d7af5f90b8a)
+- To identify noun phrase spans, [Dat Quoc Nguyen's POS tagger/Dependency parser](https://github.com/datquocnguyen/jPTDP) is used.
 
 ### Installation 
+ 
+ <img src="ensemble.png" width="600">
+
+ _If the use case is to automatically detect all noun phrase spans in a sentence, then POS tagger needs to be installed. If we only require specific phrases of interest to us in a sentence to be tagged (e.g. colorectal cancer above), then POS tagger install is **not** required. In the first use case, 7 microservices (POS tagger is made up of two microservices)  are started. In the second use, case 5 microservices are started._ 
 
 **1) Install POS service using https://github.com/ajitrajasekharan/JPTDP_wrapper.git**
 
