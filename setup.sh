@@ -7,6 +7,7 @@ function init
     pip install pytorch_transformers
     pip install scikit-learn
     pip install transformers
+    apt-get install wget
 }
 
 
@@ -66,5 +67,6 @@ function microservices
 
 
 
+init
 fetch
 microservices
