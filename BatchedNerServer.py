@@ -8,6 +8,8 @@ import pdb
 import config_utils as cf
 
 
+DEFAULT_CONFIG = "./config.json"
+
 singleton = None
 full_sentence_tag = True
 try:
@@ -23,7 +25,7 @@ class BatchedNerServer(ResponseHandler.ResponseHandler):
         global singleton
         global full_sentence_tag
         if singleton is None:
-            singleton = batched_main_NER.UnsupNER()
+            singleton = batched_main_NER.UnsupNER(DEFAULT_CONFIG)
             full_sentence_tag  = True if cf.read_config()["FULL_SENTENCE_TAG"] == "1" else False
         if (write_obj is not None):
             param =write_obj.path[1:]

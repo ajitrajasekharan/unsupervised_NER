@@ -12,6 +12,7 @@ import json
 #WORD_POS = 1
 #TAG_POS = 2
 #MASK_TAG = "__entity__"
+DEFAULT_CONFIG = "./config.json"
 DISPATCH_MASK_TAG = "entity"
 DESC_HEAD = "PIVOT_DESCRIPTORS:"
 #TYPE2_AMB = "AMB2-"
@@ -60,21 +61,22 @@ def read_entity_map(file_name):
     return emap
 
 class UnsupNER:
-    def __init__(self):
+    def __init__(self,config_file):
         print("NER service handler started")
-        self.pos_server_url  = cf.read_config()["POS_SERVER_URL"]
-        self.desc_server_url  = cf.read_config()["DESC_SERVER_URL"]
-        self.entity_server_url  = cf.read_config()["ENTITY_SERVER_URL"]
-        self.common_descs = read_common_descs(cf.read_config()["COMMON_DESCS_FILE"])
-        self.entity_map = read_entity_map(cf.read_config()["EMAP_FILE"])
-        self.rfp = open("log_results.txt","a")
-        self.dfp = open("log_debug.txt","a")
-        self.algo_ci_tag_fp = open("algorthimic_ci_tags.txt","a")
+        base_path = cf.read_config(config_file)["BASE_PATH"] if  ("BASE_PATH" in cf.read_config(config_file)) else "./"
+        self.pos_server_url  = cf.read_config(config_file)["POS_SERVER_URL"]
+        self.desc_server_url  = cf.read_config(config_file)["DESC_SERVER_URL"]
+        self.entity_server_url  = cf.read_config(config_file)["ENTITY_SERVER_URL"]
+        self.common_descs = read_common_descs(cf.read_config(config_file)["COMMON_DESCS_FILE"])
+        self.entity_map = read_entity_map(cf.read_config(config_file)["EMAP_FILE"])
+        self.rfp = open(base_path + "log_results.txt","a")
+        self.dfp = open(base_path + "log_debug.txt","a")
+        self.algo_ci_tag_fp = open(base_path + "algorthimic_ci_tags.txt","a")
         print(self.pos_server_url)
         print(self.desc_server_url)
         print(self.entity_server_url)
         np.set_printoptions(suppress=True) #this suppresses exponential representation when np is used to round
-        if (cf.read_config()["SUPPRESS_UNTAGGED"] == "1"):
+        if (cf.read_config(config_file)["SUPPRESS_UNTAGGED"] == "1"):
             self.suppress_untagged = True
         else:
             self.suppress_untagged = False #This is disabled in full debug text mode
@@ -872,8 +874,9 @@ test_arr = [
 def test_canned_sentences(obj):
     rfp = open("results.txt","w")
     dfp = open("debug.txt","w")
+    pdb.set_trace()
     for line in test_arr:
-        obj = obj.tag_sentence(line,rfp,dfp,True)
+        ret_val = obj.tag_sentence(line,rfp,dfp,True)
         pdb.set_trace()
     rfp.close()
     dfp.close()
@@ -881,10 +884,11 @@ def test_canned_sentences(obj):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='main NER for a single model ',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-input', action="store", dest="input",default="",help='Input file required for run options batch,single')
+    parser.add_argument('-config', action="store", dest="config", default=DEFAULT_CONFIG,help='config file path')
     parser.add_argument('-option', action="store", dest="option",default="canned",help='Valid options are canned,batch,single. canned - test few canned sentences used in medium artice. batch - tag sentences in input file. Entities to be tagged are determing used POS tagging to find noun phrases. specific - tag specific entities in input file. The tagged word or phrases needs to be of the form w1:__entity_ w2:__entity_ Example:Her hypophysitis:__entity__ secondary to ipilimumab was well managed with supplemental:__entity__ hormones:__entity__')
     results = parser.parse_args()
 
-    obj = UnsupNER()
+    obj = UnsupNER(results.config)
     if (results.option == "canned"):
         test_canned_sentences(obj)
     elif (results.option == "batch"):
