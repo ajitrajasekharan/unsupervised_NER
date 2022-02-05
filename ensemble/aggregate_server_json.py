@@ -230,7 +230,7 @@ class AggregateNER:
 
     def check_if_entity_in_arr(self,entity,arr):
         for node in arr:
-            if (entity == node["e"]):
+            if (entity == node["e"].split('[')[0]):
                 return True
         return False
 
