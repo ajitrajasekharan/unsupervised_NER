@@ -17,7 +17,6 @@ import aggregate_server_json
 
 MASK = ":__entity__"
 RESULT_MASK = "NER_FINAL_RESULTS:"
-DEFAULT_CONFIG = "./config.json"
 
 DEFAULT_TEST_BATCH_FILE="bootstrap_test_set.txt"
 NER_OUTPUT_FILE="ner_output.txt"
@@ -29,13 +28,13 @@ actions_arr = [
         ]
 
 class AggregateNER:
-    def __init__(self,config_file):
+    def __init__(self):
         self.error_fp = open("failed_queries_log.txt","a")
         self.rfp = open("query_response_log.txt","a")
         self.query_log_fp = open("query_logs.txt","a")
         self.inferred_entities_log_fp = open("inferred_entities_log.txt","a")
         self.threshold = DEFAULT_THRESHOLD #TBD read this from confg. cf.read_config()["CROSS_OVER_THRESHOLD_SIGMA"]
-        self.servers  = cf.read_config(config_file)["NER_SERVERS"]
+        self.servers  = cf.read_config()["NER_SERVERS"]
 
     def add_term_punct(self,sent):
         if (len(sent) > 1):
@@ -230,7 +229,7 @@ class AggregateNER:
 
     def check_if_entity_in_arr(self,entity,arr):
         for node in arr:
-            if (entity == node["e"].split('[')[0]):
+            if (entity == node["e"]):
                 return True
         return False
 
@@ -536,8 +535,8 @@ def  strict_is_included_in_server_entities(predictions,s_arr,check_first_only):
     return True
 
 
-def tag_interactive(config_file):
-    obj = AggregateNER(config_file)
+def tag_interactive():
+    obj = AggregateNER()
     while True:
         print("Enter text with entity for masked position")
         inp = input()
@@ -556,8 +555,8 @@ def gen_ner_output(results,fp):
     fp.write("\n")
     fp.flush()
 
-def batch_mode(config_file,inp_file,output_file):
-    obj = AggregateNER(config_file)
+def batch_mode(inp_file,output_file):
+    obj = AggregateNER()
     count = 1
     ner_fp = open(output_file,"w")
     with open(inp_file) as fp:
@@ -572,6 +571,7 @@ def batch_mode(config_file,inp_file,output_file):
 
 
 canned_sentences = [
+    "Ajit Rajasekharan is an engineer at nFerence",
     "I thank my Beijing:__entity__ friends and wish everyone a Happy New:__entity__ Year:__entity__",
     "He drove from Kisatchie National Forest to North Carolina through sunny Alabama",
     "I thank my Beijing friends and wish everyone a Happy New Year",
@@ -718,8 +718,8 @@ canned_sentences = [
     "Input: Coronavirus:__entity__ disease 2019 (COVID-19) is a contagious disease caused by severe acute respiratory syndrome coronavirus 2 (SARS-CoV-2). The first known case was identified in Wuhan, China, in December 2019.[7] The disease has since spread worldwide, leading to an ongoing pandemic.[8]Symptoms of COVID-19 are variable, but often include fever,[9] cough, headache,[10] fatigue, breathing difficulties, and loss of smell and taste.[11][12][13] Symptoms may begin one to fourteen days after exposure to the virus. At least a third of people who are infected do not develop noticeable symptoms.[14] Of those people who develop symptoms noticeable enough to be classed as patients, most (81%) develop mild to moderate symptoms (up to mild pneumonia), while 14% develop severe symptoms (dyspnea, hypoxia, or more than 50% lung involvement on imaging), and 5% suffer critical symptoms (respiratory failure, shock, or multiorgan dysfunction).[15] Older people are at a higher risk of developing severe symptoms. Some people continue to experience a range of effects (long COVID) for months after recovery, and damage to organs has been observed.[16] Multi-year studies are underway to further investigate the long-term effects of the disease.[16]COVID-19 transmits when people breathe in air contaminated by droplets and small airborne particles containing the virus. The risk of breathing these in is highest when people are in close proximity, but they can be inhaled over longer distances, particularly indoors. Transmission can also occur if splashed or sprayed with contaminated fluids in the eyes, nose or mouth, and, rarely, via contaminated surfaces. People remain contagious for up to 20 days, and can spread the virus even if they do not develop symptoms.[17][18]Several testing methods have been developed to diagnose the disease. The standard diagnostic method is by detection of the virus' nucleic acid by real-time reverse transcription polymerase chain reaction (rRT-PCR), transcription-mediated amplification (TMA), or by reverse transcription loop-mediated isothermal amplification (RT-LAMP) from a nasopharyngeal swab.Several COVID-19 vaccines have been approved and distributed in various countries, which have initiated mass vaccination campaigns. Other preventive measures include physical or social distancing, quarantining, ventilation of indoor spaces, covering coughs and sneezes, hand washing, and keeping unwashed hands away from the face. The use of face masks or coverings has been recommended in public settings to minimize the risk of transmissions. While work is underway to develop drugs that inhibit the virus, the primary treatment is symptomatic. Management involves the treatment of symptoms, supportive care, isolation, and experimental measures."
 ]
 
-def test_canned_sentences(config_file):
-    obj = AggregateNER(config_file)
+def test_canned_sentences():
+    obj = AggregateNER()
     for line in canned_sentences:
         results = obj.fetch_all(line)
         print("Input:",line)
@@ -729,20 +729,18 @@ def test_canned_sentences(config_file):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='main NER for a single model ',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-input', action="store", dest="input",default=DEFAULT_TEST_BATCH_FILE,help='Input file for batch run option')
-    parser.add_argument('-config', action="store", dest="config", default=DEFAULT_CONFIG,help='config file path')
     parser.add_argument('-output', action="store", dest="output",default=NER_OUTPUT_FILE,help='Output file for batch run option')
     parser.add_argument('-option', action="store", dest="option",default="canned",help='Valid options are canned,batch,interactive. canned - test few canned sentences used in medium artice. batch - tag sentences in input file. Entities to be tagged are determing used POS tagging to find noun phrases.interactive - input one sentence at a time')
     results = parser.parse_args()
-    config_file = results.config
 
     if (results.option == "interactive"):
-        tag_interactive(config_file)
+        tag_interactive()
     elif (results.option == "batch"):
         if (len(results.input) == 0):
             print("Input file needs to be specified")
         else:
             print("Running Batch mode")
-            batch_mode(config_file,results.input,results.output)
+            batch_mode(results.input,results.output)
     else:
         print("Running canned test mode")
-        test_canned_sentences(config_file)
+        test_canned_sentences()
