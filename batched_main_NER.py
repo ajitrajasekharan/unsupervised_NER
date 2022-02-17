@@ -26,7 +26,12 @@ SPECIFIC_TAG=":__entity__"
 
 def softmax(x):
     """Compute softmax values for each sets of scores in x."""
-    return np.exp(x) / np.sum(np.exp(x), axis=0)
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum(axis=0) # only difference
+
+#def softmax(x):
+#    """Compute softmax values for each sets of scores in x."""
+#    return np.exp(x) / np.sum(np.exp(x), axis=0)
 
 
 #noun_tags = ['NFP','JJ','NN','FW','NNS','NNPS','JJS','JJR','NNP','POS','CD']
