@@ -1,6 +1,6 @@
 mkdir -p labels 
 ( cd labels;
-gdown https://drive.google.com/uc?id=13YcDHsw2IavKbVba7vXICcLvVH1_5KWL
+gdown https://drive.google.com/uc?id=1QmJBoLsKFqU8X_Q0sGWA1uyYsyqH7lOB
 tar xvf labels.tar
 mv labels/* .
 rm -rf labels
