@@ -46,7 +46,7 @@ _Note POS service requires python 2.7 environment_
  ### Revision notes for major updates
  
  July 2022
- - Added the generation of bootstrap file. These component files can be edited to improve the bootstrap list. Every time the bootstrap list is updated, we need to run the clustering to magnify this list and use for NER. 
+ - Added the generation of bootstrap file. These component files can be edited to improve the bootstrap list. Every time the bootstrap list is updated, we need to run the clustering (run.sh in https://github.com/ajitrajasekharan/bert_vector_clustering.git) to magnify this list and use for NER. 
  
  17 Jan 2022
  - Ensemble service of NER with two models tested on 11  NER benchmarks as described in this [post.](https://ajitrajasekharan.github.io/2021/01/02/my-first-post.html)
