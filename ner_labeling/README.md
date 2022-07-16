@@ -2,7 +2,7 @@
 #### To generate a single entity file with all the manually labeled individual entity files
 
 ##### For bio space
-  ./gen_bs.sh bio_labels.txt
+  ./gen_bs.sh bio_list.txt
   
 ##### For PHI space
   ./gen_bs.sh phi_list.txt
