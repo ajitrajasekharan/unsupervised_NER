@@ -1,16 +1,12 @@
-With the addition of labels from supervised data sets which have noise, the bootstrap file creation is separated into bio and phi to avoid influence of non-core entity types of a model from overwhelming core entity types
 
+### To generate a single entitities file with all the manually labeled entities
 
-Also one thing that supervised data sets do is bring in adjective terms. This is one more reason to separate the list for different models
-
-
-to generate bootstrap entities for bio models
-./gen_bs.sh bio_list.txt 
-
-
-For non bio
-./gen_bs.sh phi_list.txt 
-
-
-
-Then use the output  bootstrap_entities.txt to cluster and magnify the labeled terms to other terms.
+#### For bio space
+  ./gen_bs.sh bio_labels.txt
+  
+### For PHI space
+  ./gen_bs.sh phi_list.txt
+  
+  
+  
+Then use the output  bootstrap_entities.txt to cluster using the [bert_vector_clustering](https://github.com/ajitrajasekharan/bert_vector_clustering.git) . That will magnify the number of vocab terms tagged as well as generate a entity signature for all terms in vocab
